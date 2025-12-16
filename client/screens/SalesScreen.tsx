@@ -7,11 +7,13 @@ import {
   FlatList,
   Platform,
   Modal,
+  Alert,
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -20,7 +22,6 @@ import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
 import { COURSE_OPTIONS, type Sale, type SalesSummary } from "@shared/schema";
 
-// 日付を日本語形式でフォーマット
 function formatDateJapanese(dateString: string): string {
   const date = new Date(dateString);
   const year = date.getFullYear();
@@ -29,15 +30,8 @@ function formatDateJapanese(dateString: string): string {
   return `${year}年${month}月${day}日`;
 }
 
-// 金額をフォーマット
 function formatAmount(amount: number): string {
   return amount.toLocaleString("ja-JP");
-}
-
-// 今日の日付をYYYY-MM-DD形式で取得
-function getTodayString(): string {
-  const today = new Date();
-  return today.toISOString().split("T")[0];
 }
 
 export default function SalesScreen() {
@@ -46,20 +40,26 @@ export default function SalesScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
-  // 入力フォームの状態
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<string>("");
   const [showCoursePicker, setShowCoursePicker] = useState(false);
   const [amount, setAmount] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("保存しました");
 
-  // 売上データを取得
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editDate, setEditDate] = useState(new Date());
+  const [editCourse, setEditCourse] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+  const [showEditCoursePicker, setShowEditCoursePicker] = useState(false);
+
   const { data, isLoading } = useQuery<SalesSummary>({
     queryKey: ["/api/sales"],
   });
 
-  // 売上を登録
   const createSaleMutation = useMutation({
     mutationFn: async (saleData: {
       date: string;
@@ -71,17 +71,48 @@ export default function SalesScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
-      // フォームをリセット
       setSelectedDate(new Date());
       setSelectedCourse("");
       setAmount("");
-      // 保存完了メッセージを表示
+      setSuccessMessage("保存しました");
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 2000);
     },
   });
 
-  // 登録ボタンを押したとき
+  const updateSaleMutation = useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: { date?: string; course?: string; amount?: number };
+    }) => {
+      const res = await apiRequest("PUT", `/api/sales/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      setShowEditModal(false);
+      setEditingSale(null);
+      setSuccessMessage("更新しました");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    },
+  });
+
+  const deleteSaleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/sales/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      setSuccessMessage("削除しました");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    },
+  });
+
   const handleSubmit = useCallback(() => {
     if (!selectedCourse || !amount) {
       return;
@@ -97,7 +128,6 @@ export default function SalesScreen() {
     });
   }, [selectedDate, selectedCourse, amount, createSaleMutation]);
 
-  // 日付ピッカーの値が変わったとき
   const onDateChange = (_event: any, date?: Date) => {
     if (Platform.OS === "android") {
       setShowDatePicker(false);
@@ -107,7 +137,6 @@ export default function SalesScreen() {
     }
   };
 
-  // 金額入力の処理
   const handleAmountChange = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, "");
     if (numericText) {
@@ -118,7 +147,65 @@ export default function SalesScreen() {
     }
   };
 
-  // 売上一覧のアイテムをレンダリング
+  const openEditModal = (sale: Sale) => {
+    setEditingSale(sale);
+    setEditDate(new Date(sale.date));
+    setEditCourse(sale.course);
+    setEditAmount(sale.amount.toLocaleString("ja-JP"));
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = () => {
+    if (!editingSale || !editCourse || !editAmount) return;
+    const amountNumber = parseInt(editAmount.replace(/,/g, ""), 10);
+    if (isNaN(amountNumber) || amountNumber <= 0) return;
+
+    updateSaleMutation.mutate({
+      id: editingSale.id,
+      data: {
+        date: editDate.toISOString().split("T")[0],
+        course: editCourse,
+        amount: amountNumber,
+      },
+    });
+  };
+
+  const handleDelete = (sale: Sale) => {
+    if (Platform.OS === "web") {
+      if (window.confirm("この売上データを削除しますか？")) {
+        deleteSaleMutation.mutate(sale.id);
+      }
+    } else {
+      Alert.alert("確認", "この売上データを削除しますか？", [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "削除",
+          style: "destructive",
+          onPress: () => deleteSaleMutation.mutate(sale.id),
+        },
+      ]);
+    }
+  };
+
+  const onEditDateChange = (_event: any, date?: Date) => {
+    if (Platform.OS === "android") {
+      setShowEditDatePicker(false);
+    }
+    if (date) {
+      setEditDate(date);
+    }
+  };
+
+  const handleEditAmountChange = (text: string) => {
+    const numericText = text.replace(/[^0-9]/g, "");
+    if (numericText) {
+      const num = parseInt(numericText, 10);
+      setEditAmount(num.toLocaleString("ja-JP"));
+    } else {
+      setEditAmount("");
+    }
+  };
+
   const renderSaleItem = ({ item }: { item: Sale }) => (
     <View style={[styles.saleItem, { borderBottomColor: theme.border }]}>
       <View style={styles.saleItemLeft}>
@@ -129,9 +216,31 @@ export default function SalesScreen() {
           {item.course}
         </ThemedText>
       </View>
-      <ThemedText style={[styles.saleItemAmount, { color: theme.warmBrown }]}>
-        {formatAmount(item.amount)}円
-      </ThemedText>
+      <View style={styles.saleItemRight}>
+        <ThemedText style={[styles.saleItemAmount, { color: theme.warmBrown }]}>
+          {formatAmount(item.amount)}円
+        </ThemedText>
+        <View style={styles.actionButtons}>
+          <Pressable
+            onPress={() => openEditModal(item)}
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Feather name="edit-2" size={18} color={theme.warmBrown} />
+          </Pressable>
+          <Pressable
+            onPress={() => handleDelete(item)}
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Feather name="trash-2" size={18} color="#CC6666" />
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 
@@ -151,34 +260,59 @@ export default function SalesScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* 保存完了メッセージ */}
         {showSuccess ? (
           <View style={[styles.successBanner, { backgroundColor: theme.success }]}>
-            <ThemedText style={styles.successText}>保存しました</ThemedText>
+            <ThemedText style={styles.successText}>{successMessage}</ThemedText>
           </View>
         ) : null}
 
-        {/* 売上入力フォーム */}
         <View style={[styles.formCard, { backgroundColor: theme.backgroundDefault }]}>
           <ThemedText style={styles.sectionTitle}>売上入力</ThemedText>
 
-          {/* 日付選択 */}
           <View style={styles.inputGroup}>
             <ThemedText style={styles.inputLabel}>日付</ThemedText>
-            <Pressable
-              onPress={() => setShowDatePicker(true)}
-              style={[
-                styles.inputField,
-                { backgroundColor: "#FFFFFF", borderColor: theme.border },
-              ]}
-            >
-              <ThemedText style={styles.inputText}>
-                {formatDateJapanese(selectedDate.toISOString().split("T")[0])}
-              </ThemedText>
-            </Pressable>
+            {Platform.OS === "web" ? (
+              <View
+                style={[
+                  styles.inputField,
+                  { backgroundColor: "#FFFFFF", borderColor: theme.border },
+                ]}
+              >
+                <input
+                  type="date"
+                  value={selectedDate.toISOString().split("T")[0]}
+                  onChange={(e) => {
+                    const newDate = new Date(e.target.value);
+                    if (!isNaN(newDate.getTime())) {
+                      setSelectedDate(newDate);
+                    }
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    fontSize: 18,
+                    width: "100%",
+                    height: "100%",
+                    outline: "none",
+                    fontFamily: "inherit",
+                  }}
+                />
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => setShowDatePicker(true)}
+                style={[
+                  styles.inputField,
+                  { backgroundColor: "#FFFFFF", borderColor: theme.border },
+                ]}
+              >
+                <ThemedText style={styles.inputText}>
+                  {formatDateJapanese(selectedDate.toISOString().split("T")[0])}
+                </ThemedText>
+              </Pressable>
+            )}
           </View>
 
-          {/* コース名選択 */}
           <View style={styles.inputGroup}>
             <ThemedText style={styles.inputLabel}>コース名</ThemedText>
             <Pressable
@@ -199,7 +333,6 @@ export default function SalesScreen() {
             </Pressable>
           </View>
 
-          {/* 金額入力 */}
           <View style={styles.inputGroup}>
             <ThemedText style={styles.inputLabel}>金額（税込）</ThemedText>
             <View
@@ -221,7 +354,6 @@ export default function SalesScreen() {
             </View>
           </View>
 
-          {/* 登録ボタン */}
           <Pressable
             onPress={handleSubmit}
             disabled={isSubmitDisabled}
@@ -239,7 +371,6 @@ export default function SalesScreen() {
           </Pressable>
         </View>
 
-        {/* 売上集計 */}
         <View style={styles.summarySection}>
           <View style={[styles.summaryCard, { backgroundColor: theme.backgroundDefault }]}>
             <ThemedText style={[styles.summaryLabel, { color: theme.textSecondary }]}>
@@ -260,7 +391,6 @@ export default function SalesScreen() {
           </View>
         </View>
 
-        {/* 売上一覧 */}
         <View style={[styles.listSection, { backgroundColor: theme.backgroundDefault }]}>
           <ThemedText style={styles.sectionTitle}>売上一覧</ThemedText>
           {isLoading ? (
@@ -271,7 +401,7 @@ export default function SalesScreen() {
             <FlatList
               data={data.sales}
               renderItem={renderSaleItem}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => String(item.id)}
               scrollEnabled={false}
             />
           ) : (
@@ -282,7 +412,6 @@ export default function SalesScreen() {
         </View>
       </KeyboardAwareScrollViewCompat>
 
-      {/* 日付ピッカー（iOS用モーダル） */}
       {Platform.OS === "ios" && showDatePicker ? (
         <Modal transparent animationType="slide">
           <View style={styles.modalOverlay}>
@@ -306,7 +435,6 @@ export default function SalesScreen() {
         </Modal>
       ) : null}
 
-      {/* 日付ピッカー（Android） */}
       {Platform.OS === "android" && showDatePicker ? (
         <DateTimePicker
           value={selectedDate}
@@ -316,7 +444,6 @@ export default function SalesScreen() {
         />
       ) : null}
 
-      {/* コース選択モーダル */}
       <Modal visible={showCoursePicker} transparent animationType="slide">
         <Pressable
           style={styles.modalOverlay}
@@ -350,6 +477,194 @@ export default function SalesScreen() {
                   style={[
                     styles.courseOptionText,
                     selectedCourse === course && { color: theme.warmBrown, fontWeight: "600" },
+                  ]}
+                >
+                  {course}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showEditModal} transparent animationType="slide">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowEditModal(false)}
+        >
+          <Pressable
+            style={[styles.editModal, { backgroundColor: "#FFFFFF" }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.editModalHeader}>
+              <ThemedText style={styles.editModalTitle}>売上を編集</ThemedText>
+              <Pressable onPress={() => setShowEditModal(false)}>
+                <Feather name="x" size={24} color={theme.text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <ThemedText style={styles.inputLabel}>日付</ThemedText>
+              {Platform.OS === "web" ? (
+                <View
+                  style={[
+                    styles.inputField,
+                    { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+                  ]}
+                >
+                  <input
+                    type="date"
+                    value={editDate.toISOString().split("T")[0]}
+                    onChange={(e) => {
+                      const newDate = new Date(e.target.value);
+                      if (!isNaN(newDate.getTime())) {
+                        setEditDate(newDate);
+                      }
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      fontSize: 18,
+                      width: "100%",
+                      height: "100%",
+                      outline: "none",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => setShowEditDatePicker(true)}
+                  style={[
+                    styles.inputField,
+                    { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+                  ]}
+                >
+                  <ThemedText style={styles.inputText}>
+                    {formatDateJapanese(editDate.toISOString().split("T")[0])}
+                  </ThemedText>
+                </Pressable>
+              )}
+            </View>
+
+            <View style={styles.inputGroup}>
+              <ThemedText style={styles.inputLabel}>コース名</ThemedText>
+              <Pressable
+                onPress={() => setShowEditCoursePicker(true)}
+                style={[
+                  styles.inputField,
+                  { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+                ]}
+              >
+                <ThemedText style={styles.inputText}>{editCourse}</ThemedText>
+              </Pressable>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <ThemedText style={styles.inputLabel}>金額（税込）</ThemedText>
+              <View
+                style={[
+                  styles.inputField,
+                  styles.amountInputContainer,
+                  { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+                ]}
+              >
+                <TextInput
+                  style={styles.amountInput}
+                  value={editAmount}
+                  onChangeText={handleEditAmountChange}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={theme.textSecondary}
+                />
+                <ThemedText style={styles.currencyLabel}>円</ThemedText>
+              </View>
+            </View>
+
+            <Pressable
+              onPress={handleEditSubmit}
+              disabled={updateSaleMutation.isPending}
+              style={({ pressed }) => [
+                styles.submitButton,
+                {
+                  backgroundColor: pressed ? theme.primaryPressed : theme.primary,
+                  opacity: updateSaleMutation.isPending ? 0.5 : 1,
+                },
+              ]}
+            >
+              <ThemedText style={[styles.submitButtonText, { color: theme.warmBrown }]}>
+                更新
+              </ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {Platform.OS === "ios" && showEditDatePicker ? (
+        <Modal transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.pickerModal, { backgroundColor: "#FFFFFF" }]}>
+              <View style={styles.pickerHeader}>
+                <Pressable onPress={() => setShowEditDatePicker(false)}>
+                  <ThemedText style={[styles.pickerDone, { color: theme.warmBrown }]}>
+                    完了
+                  </ThemedText>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={editDate}
+                mode="date"
+                display="spinner"
+                onChange={onEditDateChange}
+                locale="ja"
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {Platform.OS === "android" && showEditDatePicker ? (
+        <DateTimePicker
+          value={editDate}
+          mode="date"
+          display="default"
+          onChange={onEditDateChange}
+        />
+      ) : null}
+
+      <Modal visible={showEditCoursePicker} transparent animationType="slide">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowEditCoursePicker(false)}
+        >
+          <View style={[styles.pickerModal, { backgroundColor: "#FFFFFF" }]}>
+            <View style={styles.pickerHeader}>
+              <ThemedText style={styles.pickerTitle}>コースを選択</ThemedText>
+              <Pressable onPress={() => setShowEditCoursePicker(false)}>
+                <ThemedText style={[styles.pickerDone, { color: theme.warmBrown }]}>
+                  閉じる
+                </ThemedText>
+              </Pressable>
+            </View>
+            {COURSE_OPTIONS.map((course) => (
+              <Pressable
+                key={course}
+                style={({ pressed }) => [
+                  styles.courseOption,
+                  {
+                    backgroundColor: pressed ? theme.backgroundDefault : "#FFFFFF",
+                    borderBottomColor: theme.border,
+                  },
+                ]}
+                onPress={() => {
+                  setEditCourse(course);
+                  setShowEditCoursePicker(false);
+                }}
+              >
+                <ThemedText
+                  style={[
+                    styles.courseOptionText,
+                    editCourse === course && { color: theme.warmBrown, fontWeight: "600" },
                   ]}
                 >
                   {course}
@@ -471,6 +786,9 @@ const styles = StyleSheet.create({
   saleItemLeft: {
     flex: 1,
   },
+  saleItemRight: {
+    alignItems: "flex-end",
+  },
   saleItemDate: {
     fontSize: 16,
     fontWeight: "500",
@@ -482,6 +800,14 @@ const styles = StyleSheet.create({
   saleItemAmount: {
     fontSize: 18,
     fontWeight: "600",
+  },
+  actionButtons: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginTop: Spacing.xs,
+  },
+  iconButton: {
+    padding: Spacing.xs,
   },
   emptyText: {
     fontSize: 16,
@@ -521,5 +847,21 @@ const styles = StyleSheet.create({
   },
   courseOptionText: {
     fontSize: 18,
+  },
+  editModal: {
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    paddingBottom: Spacing["3xl"],
+  },
+  editModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.xl,
+  },
+  editModalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
   },
 });

@@ -1,31 +1,33 @@
+import { pgTable, text, integer, timestamp, serial } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// 売上データのスキーマ
-export const saleSchema = z.object({
-  id: z.string(),
-  date: z.string(),
-  course: z.string(),
-  amount: z.number(),
-  createdAt: z.string(),
+// 売上テーブル
+export const sales = pgTable("sales", {
+  id: serial("id").primaryKey(),
+  date: text("date").notNull(),
+  course: text("course").notNull(),
+  amount: integer("amount").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertSaleSchema = z.object({
-  date: z.string(),
-  course: z.string(),
-  amount: z.number(),
+// Zodスキーマ
+export const insertSaleSchema = createInsertSchema(sales).omit({
+  id: true,
+  createdAt: true,
 });
 
-export type Sale = z.infer<typeof saleSchema>;
+export const selectSaleSchema = createSelectSchema(sales);
+
+export type Sale = typeof sales.$inferSelect;
 export type InsertSale = z.infer<typeof insertSaleSchema>;
 
-// 売上集計データのスキーマ
-export const salesSummarySchema = z.object({
-  todayTotal: z.number(),
-  monthTotal: z.number(),
-  sales: z.array(saleSchema),
-});
-
-export type SalesSummary = z.infer<typeof salesSummarySchema>;
+// 売上集計データの型
+export interface SalesSummary {
+  todayTotal: number;
+  monthTotal: number;
+  sales: Sale[];
+}
 
 // コース名の選択肢
 export const COURSE_OPTIONS = [

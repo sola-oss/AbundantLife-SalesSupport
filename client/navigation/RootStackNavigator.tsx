@@ -1,27 +1,57 @@
 import React from "react";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { Feather } from "@expo/vector-icons";
 import SalesScreen from "@/screens/SalesScreen";
+import ReportsScreen from "@/screens/ReportsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { HeaderTitle } from "@/components/HeaderTitle";
+import { Colors } from "@/constants/theme";
 
-export type RootStackParamList = {
+export type RootTabParamList = {
   Sales: undefined;
+  Reports: undefined;
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export default function RootStackNavigator() {
   const screenOptions = useScreenOptions();
+  const theme = Colors.light;
 
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen
+    <Tab.Navigator
+      screenOptions={{
+        ...screenOptions,
+        tabBarActiveTintColor: theme.warmBrown,
+        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarStyle: {
+          backgroundColor: theme.backgroundDefault,
+          borderTopColor: theme.border,
+        },
+      }}
+    >
+      <Tab.Screen
         name="Sales"
         component={SalesScreen}
         options={{
           headerTitle: () => <HeaderTitle title="売上管理" />,
+          tabBarLabel: "売上入力",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="plus-circle" size={size} color={color} />
+          ),
         }}
       />
-    </Stack.Navigator>
+      <Tab.Screen
+        name="Reports"
+        component={ReportsScreen}
+        options={{
+          headerTitle: () => <HeaderTitle title="レポート" />,
+          tabBarLabel: "レポート",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="bar-chart-2" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
   );
 }

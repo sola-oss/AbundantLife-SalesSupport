@@ -1,49 +1,50 @@
-import { type Sale, type InsertSale } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { sales, type Sale, type InsertSale, type SalesSummary } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 
 // 売上データのストレージインターフェース
 export interface IStorage {
   getSales(): Promise<Sale[]>;
+  getSaleById(id: number): Promise<Sale | undefined>;
   createSale(sale: InsertSale): Promise<Sale>;
-  getSalesSummary(): Promise<{
-    todayTotal: number;
-    monthTotal: number;
-    sales: Sale[];
-  }>;
+  updateSale(id: number, sale: Partial<InsertSale>): Promise<Sale | undefined>;
+  deleteSale(id: number): Promise<boolean>;
+  getSalesSummary(): Promise<SalesSummary>;
+  getSalesByDateRange(startDate: string, endDate: string): Promise<Sale[]>;
+  getMonthlySummary(year: number, month: number): Promise<{ date: string; total: number }[]>;
 }
 
-export class MemStorage implements IStorage {
-  private sales: Map<string, Sale>;
-
-  constructor() {
-    this.sales = new Map();
+export class DatabaseStorage implements IStorage {
+  async getSales(): Promise<Sale[]> {
+    return db.select().from(sales).orderBy(desc(sales.createdAt));
   }
 
-  async getSales(): Promise<Sale[]> {
-    const salesArray = Array.from(this.sales.values());
-    return salesArray.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+  async getSaleById(id: number): Promise<Sale | undefined> {
+    const [sale] = await db.select().from(sales).where(eq(sales.id, id));
+    return sale || undefined;
   }
 
   async createSale(insertSale: InsertSale): Promise<Sale> {
-    const id = randomUUID();
-    const sale: Sale = {
-      ...insertSale,
-      id,
-      createdAt: new Date().toISOString(),
-    };
-    this.sales.set(id, sale);
+    const [sale] = await db.insert(sales).values(insertSale).returning();
     return sale;
   }
 
-  async getSalesSummary(): Promise<{
-    todayTotal: number;
-    monthTotal: number;
-    sales: Sale[];
-  }> {
-    const sales = await this.getSales();
+  async updateSale(id: number, updateData: Partial<InsertSale>): Promise<Sale | undefined> {
+    const [sale] = await db
+      .update(sales)
+      .set(updateData)
+      .where(eq(sales.id, id))
+      .returning();
+    return sale || undefined;
+  }
+
+  async deleteSale(id: number): Promise<boolean> {
+    const result = await db.delete(sales).where(eq(sales.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getSalesSummary(): Promise<SalesSummary> {
+    const allSales = await this.getSales();
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const currentYear = now.getFullYear();
@@ -52,7 +53,7 @@ export class MemStorage implements IStorage {
     let todayTotal = 0;
     let monthTotal = 0;
 
-    for (const sale of sales) {
+    for (const sale of allSales) {
       const saleDate = new Date(sale.date);
 
       if (sale.date === today) {
@@ -70,9 +71,34 @@ export class MemStorage implements IStorage {
     return {
       todayTotal,
       monthTotal,
-      sales,
+      sales: allSales,
     };
+  }
+
+  async getSalesByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
+    return db
+      .select()
+      .from(sales)
+      .where(and(gte(sales.date, startDate), lte(sales.date, endDate)))
+      .orderBy(desc(sales.date));
+  }
+
+  async getMonthlySummary(year: number, month: number): Promise<{ date: string; total: number }[]> {
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+    
+    const result = await db
+      .select({
+        date: sales.date,
+        total: sql<number>`SUM(${sales.amount})::int`,
+      })
+      .from(sales)
+      .where(and(gte(sales.date, startDate), lte(sales.date, endDate)))
+      .groupBy(sales.date)
+      .orderBy(sales.date);
+
+    return result;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
