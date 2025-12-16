@@ -1,12 +1,11 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import MainTabNavigator from "@/navigation/MainTabNavigator";
-import ModalScreen from "@/screens/ModalScreen";
+import SalesScreen from "@/screens/SalesScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
+import { HeaderTitle } from "@/components/HeaderTitle";
 
 export type RootStackParamList = {
-  Main: undefined;
-  Modal: undefined;
+  Sales: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -17,16 +16,10 @@ export default function RootStackNavigator() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen
-        name="Main"
-        component={MainTabNavigator}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Modal"
-        component={ModalScreen}
+        name="Sales"
+        component={SalesScreen}
         options={{
-          presentation: "modal",
-          headerTitle: "Modal",
+          headerTitle: () => <HeaderTitle title="売上管理" />,
         }}
       />
     </Stack.Navigator>

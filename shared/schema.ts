@@ -1,20 +1,39 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+// 売上データのスキーマ
+export const saleSchema = z.object({
+  id: z.string(),
+  date: z.string(),
+  course: z.string(),
+  amount: z.number(),
+  createdAt: z.string(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertSaleSchema = z.object({
+  date: z.string(),
+  course: z.string(),
+  amount: z.number(),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export type Sale = z.infer<typeof saleSchema>;
+export type InsertSale = z.infer<typeof insertSaleSchema>;
+
+// 売上集計データのスキーマ
+export const salesSummarySchema = z.object({
+  todayTotal: z.number(),
+  monthTotal: z.number(),
+  sales: z.array(saleSchema),
+});
+
+export type SalesSummary = z.infer<typeof salesSummarySchema>;
+
+// コース名の選択肢
+export const COURSE_OPTIONS = [
+  "30分整体",
+  "60分整体",
+  "90分整体",
+  "回数券",
+  "その他",
+] as const;
+
+export type CourseOption = (typeof COURSE_OPTIONS)[number];

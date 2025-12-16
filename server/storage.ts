@@ -1,37 +1,77 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { type Sale, type InsertSale } from "@shared/schema";
 import { randomUUID } from "crypto";
 
-// modify the interface with any CRUD methods
-// you might need
-
+// 売上データのストレージインターフェース
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  getSales(): Promise<Sale[]>;
+  createSale(sale: InsertSale): Promise<Sale>;
+  getSalesSummary(): Promise<{
+    todayTotal: number;
+    monthTotal: number;
+    sales: Sale[];
+  }>;
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<string, User>;
+  private sales: Map<string, Sale>;
 
   constructor() {
-    this.users = new Map();
+    this.sales = new Map();
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+  async getSales(): Promise<Sale[]> {
+    const salesArray = Array.from(this.sales.values());
+    return salesArray.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createSale(insertSale: InsertSale): Promise<Sale> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+    const sale: Sale = {
+      ...insertSale,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+    this.sales.set(id, sale);
+    return sale;
+  }
+
+  async getSalesSummary(): Promise<{
+    todayTotal: number;
+    monthTotal: number;
+    sales: Sale[];
+  }> {
+    const sales = await this.getSales();
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    let todayTotal = 0;
+    let monthTotal = 0;
+
+    for (const sale of sales) {
+      const saleDate = new Date(sale.date);
+
+      if (sale.date === today) {
+        todayTotal += sale.amount;
+      }
+
+      if (
+        saleDate.getFullYear() === currentYear &&
+        saleDate.getMonth() === currentMonth
+      ) {
+        monthTotal += sale.amount;
+      }
+    }
+
+    return {
+      todayTotal,
+      monthTotal,
+      sales,
+    };
   }
 }
 
