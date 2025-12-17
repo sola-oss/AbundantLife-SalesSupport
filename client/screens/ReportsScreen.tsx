@@ -35,7 +35,7 @@ function getMonthName(year: number, month: number): string {
   return `${year}年${month}月`;
 }
 
-type ViewMode = "daily" | "monthly";
+type ViewMode = "daily" | "monthly" | "monthlySummary" | "courseSummary";
 
 export default function ReportsScreen() {
   const theme = Colors.light;
@@ -79,6 +79,36 @@ export default function ReportsScreen() {
   }, [filteredSales]);
 
   const transactionCount = filteredSales.length;
+
+  const allMonthlySummary = useMemo(() => {
+    if (!data?.sales) return [];
+    const grouped: Record<string, { yearMonth: string; year: number; month: number; total: number; count: number }> = {};
+    for (const sale of data.sales) {
+      const saleDate = new Date(sale.date);
+      const year = saleDate.getFullYear();
+      const month = saleDate.getMonth() + 1;
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      if (!grouped[key]) {
+        grouped[key] = { yearMonth: key, year, month, total: 0, count: 0 };
+      }
+      grouped[key].total += sale.amount;
+      grouped[key].count += 1;
+    }
+    return Object.values(grouped).sort((a, b) => b.yearMonth.localeCompare(a.yearMonth));
+  }, [data?.sales]);
+
+  const courseSummary = useMemo(() => {
+    if (!data?.sales) return [];
+    const grouped: Record<string, { course: string; total: number; count: number }> = {};
+    for (const sale of data.sales) {
+      if (!grouped[sale.course]) {
+        grouped[sale.course] = { course: sale.course, total: 0, count: 0 };
+      }
+      grouped[sale.course].total += sale.amount;
+      grouped[sale.course].count += 1;
+    }
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
+  }, [data?.sales]);
 
   const handleExportCSV = async () => {
     try {
@@ -153,16 +183,112 @@ export default function ReportsScreen() {
     </View>
   );
 
+  const renderMonthlySummaryItem = ({
+    item,
+  }: {
+    item: { yearMonth: string; year: number; month: number; total: number; count: number };
+  }) => (
+    <View style={[styles.summaryItem, { borderBottomColor: theme.border }]}>
+      <View style={styles.summaryItemLeft}>
+        <ThemedText style={styles.summaryItemDate}>
+          {getMonthName(item.year, item.month)}
+        </ThemedText>
+        <ThemedText style={[styles.summaryItemCount, { color: theme.textSecondary }]}>
+          {item.count}件
+        </ThemedText>
+      </View>
+      <ThemedText style={[styles.summaryItemAmount, { color: theme.warmBrown }]}>
+        {formatAmount(item.total)}円
+      </ThemedText>
+    </View>
+  );
+
+  const renderCourseSummaryItem = ({
+    item,
+  }: {
+    item: { course: string; total: number; count: number };
+  }) => (
+    <View style={[styles.summaryItem, { borderBottomColor: theme.border }]}>
+      <View style={styles.summaryItemLeft}>
+        <ThemedText style={styles.summaryItemDate}>
+          {item.course}
+        </ThemedText>
+        <ThemedText style={[styles.summaryItemCount, { color: theme.textSecondary }]}>
+          {item.count}件
+        </ThemedText>
+      </View>
+      <ThemedText style={[styles.summaryItemAmount, { color: theme.warmBrown }]}>
+        {formatAmount(item.total)}円
+      </ThemedText>
+    </View>
+  );
+
+  const getListData = () => {
+    switch (viewMode) {
+      case "daily":
+        return dailySummary;
+      case "monthly":
+        return filteredSales;
+      case "monthlySummary":
+        return allMonthlySummary;
+      case "courseSummary":
+        return courseSummary;
+      default:
+        return [];
+    }
+  };
+
+  const getRenderItem = () => {
+    switch (viewMode) {
+      case "daily":
+        return renderDailySummaryItem;
+      case "monthly":
+        return renderSaleItem;
+      case "monthlySummary":
+        return renderMonthlySummaryItem;
+      case "courseSummary":
+        return renderCourseSummaryItem;
+      default:
+        return renderDailySummaryItem;
+    }
+  };
+
+  const getKeyExtractor = (item: any, index: number) => {
+    switch (viewMode) {
+      case "daily":
+        return item.date;
+      case "monthly":
+        return String(item.id);
+      case "monthlySummary":
+        return item.yearMonth;
+      case "courseSummary":
+        return item.course;
+      default:
+        return String(index);
+    }
+  };
+
+  const getSectionTitle = () => {
+    switch (viewMode) {
+      case "daily":
+        return "日別売上";
+      case "monthly":
+        return "売上明細";
+      case "monthlySummary":
+        return "月別集計";
+      case "courseSummary":
+        return "コース別集計";
+      default:
+        return "";
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       <FlatList
-        data={viewMode === "daily" ? dailySummary : filteredSales}
-        renderItem={viewMode === "daily" ? renderDailySummaryItem : renderSaleItem}
-        keyExtractor={(item, index) =>
-          viewMode === "daily"
-            ? (item as { date: string }).date
-            : String((item as Sale).id)
-        }
+        data={getListData()}
+        renderItem={getRenderItem() as any}
+        keyExtractor={getKeyExtractor}
         contentContainerStyle={[
           styles.listContent,
           {
@@ -172,80 +298,122 @@ export default function ReportsScreen() {
         ]}
         ListHeaderComponent={
           <>
-            <View style={styles.monthSelector}>
-              <Pressable onPress={goToPreviousMonth} style={styles.arrowButton}>
-                <Feather name="chevron-left" size={28} color={theme.warmBrown} />
-              </Pressable>
-              <Pressable
-                onPress={() => setShowMonthPicker(true)}
-                style={styles.monthDisplay}
-              >
-                <ThemedText style={styles.monthText}>
-                  {getMonthName(selectedYear, selectedMonth)}
-                </ThemedText>
-                <Feather name="chevron-down" size={20} color={theme.textSecondary} />
-              </Pressable>
-              <Pressable onPress={goToNextMonth} style={styles.arrowButton}>
-                <Feather name="chevron-right" size={28} color={theme.warmBrown} />
-              </Pressable>
-            </View>
+            {(viewMode === "daily" || viewMode === "monthly") ? (
+              <>
+                <View style={styles.monthSelector}>
+                  <Pressable onPress={goToPreviousMonth} style={styles.arrowButton}>
+                    <Feather name="chevron-left" size={28} color={theme.warmBrown} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setShowMonthPicker(true)}
+                    style={styles.monthDisplay}
+                  >
+                    <ThemedText style={styles.monthText}>
+                      {getMonthName(selectedYear, selectedMonth)}
+                    </ThemedText>
+                    <Feather name="chevron-down" size={20} color={theme.textSecondary} />
+                  </Pressable>
+                  <Pressable onPress={goToNextMonth} style={styles.arrowButton}>
+                    <Feather name="chevron-right" size={28} color={theme.warmBrown} />
+                  </Pressable>
+                </View>
 
-            <View style={[styles.totalCard, { backgroundColor: theme.backgroundDefault }]}>
-              <View style={styles.totalRow}>
-                <ThemedText style={[styles.totalLabel, { color: theme.textSecondary }]}>
-                  月間売上
-                </ThemedText>
-                <ThemedText style={[styles.totalAmount, { color: theme.warmBrown }]}>
-                  {formatAmount(monthlyTotal)}円
-                </ThemedText>
-              </View>
-              <View style={styles.totalRow}>
-                <ThemedText style={[styles.totalLabel, { color: theme.textSecondary }]}>
-                  取引件数
-                </ThemedText>
-                <ThemedText style={[styles.totalCount, { color: theme.text }]}>
-                  {transactionCount}件
-                </ThemedText>
-              </View>
-            </View>
+                <View style={[styles.totalCard, { backgroundColor: theme.backgroundDefault }]}>
+                  <View style={styles.totalRow}>
+                    <ThemedText style={[styles.totalLabel, { color: theme.textSecondary }]}>
+                      月間売上
+                    </ThemedText>
+                    <ThemedText style={[styles.totalAmount, { color: theme.warmBrown }]}>
+                      {formatAmount(monthlyTotal)}円
+                    </ThemedText>
+                  </View>
+                  <View style={styles.totalRow}>
+                    <ThemedText style={[styles.totalLabel, { color: theme.textSecondary }]}>
+                      取引件数
+                    </ThemedText>
+                    <ThemedText style={[styles.totalCount, { color: theme.text }]}>
+                      {transactionCount}件
+                    </ThemedText>
+                  </View>
+                </View>
+              </>
+            ) : null}
 
-            <View style={styles.viewModeSelector}>
-              <Pressable
-                onPress={() => setViewMode("daily")}
-                style={[
-                  styles.viewModeButton,
-                  viewMode === "daily" && {
-                    backgroundColor: theme.primary,
-                  },
-                ]}
-              >
-                <ThemedText
+            <View style={styles.viewModeContainer}>
+              <View style={styles.viewModeSelector}>
+                <Pressable
+                  onPress={() => setViewMode("daily")}
                   style={[
-                    styles.viewModeText,
-                    viewMode === "daily" && { color: theme.warmBrown, fontWeight: "600" },
+                    styles.viewModeButton,
+                    viewMode === "daily" && {
+                      backgroundColor: theme.primary,
+                    },
                   ]}
                 >
-                  日別集計
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={() => setViewMode("monthly")}
-                style={[
-                  styles.viewModeButton,
-                  viewMode === "monthly" && {
-                    backgroundColor: theme.primary,
-                  },
-                ]}
-              >
-                <ThemedText
+                  <ThemedText
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "daily" && { color: theme.warmBrown, fontWeight: "600" },
+                    ]}
+                  >
+                    日別
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => setViewMode("monthly")}
                   style={[
-                    styles.viewModeText,
-                    viewMode === "monthly" && { color: theme.warmBrown, fontWeight: "600" },
+                    styles.viewModeButton,
+                    viewMode === "monthly" && {
+                      backgroundColor: theme.primary,
+                    },
                   ]}
                 >
-                  明細一覧
-                </ThemedText>
-              </Pressable>
+                  <ThemedText
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "monthly" && { color: theme.warmBrown, fontWeight: "600" },
+                    ]}
+                  >
+                    明細
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => setViewMode("monthlySummary")}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "monthlySummary" && {
+                      backgroundColor: theme.primary,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "monthlySummary" && { color: theme.warmBrown, fontWeight: "600" },
+                    ]}
+                  >
+                    月別
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => setViewMode("courseSummary")}
+                  style={[
+                    styles.viewModeButton,
+                    viewMode === "courseSummary" && {
+                      backgroundColor: theme.primary,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      styles.viewModeText,
+                      viewMode === "courseSummary" && { color: theme.warmBrown, fontWeight: "600" },
+                    ]}
+                  >
+                    コース別
+                  </ThemedText>
+                </Pressable>
+              </View>
             </View>
 
             <View style={styles.exportRow}>
@@ -267,7 +435,7 @@ export default function ReportsScreen() {
 
             <View style={[styles.listSection, { backgroundColor: theme.backgroundDefault }]}>
               <ThemedText style={styles.sectionTitle}>
-                {viewMode === "daily" ? "日別売上" : "売上明細"}
+                {getSectionTitle()}
               </ThemedText>
             </View>
           </>
@@ -275,7 +443,9 @@ export default function ReportsScreen() {
         ListEmptyComponent={
           <View style={[styles.listSection, { backgroundColor: theme.backgroundDefault }]}>
             <ThemedText style={[styles.emptyText, { color: theme.textSecondary }]}>
-              この月のデータがありません
+              {viewMode === "monthlySummary" || viewMode === "courseSummary"
+                ? "データがありません"
+                : "この月のデータがありません"}
             </ThemedText>
           </View>
         }
@@ -401,20 +571,23 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
   },
+  viewModeContainer: {
+    marginBottom: Spacing.lg,
+  },
   viewModeSelector: {
     flexDirection: "row",
-    gap: Spacing.sm,
-    marginBottom: Spacing.lg,
+    gap: Spacing.xs,
   },
   viewModeButton: {
     flex: 1,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
     borderRadius: BorderRadius.sm,
     alignItems: "center",
     backgroundColor: "#E5E5E5",
   },
   viewModeText: {
-    fontSize: 16,
+    fontSize: 14,
   },
   exportRow: {
     marginBottom: Spacing.lg,
