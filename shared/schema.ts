@@ -31,11 +31,16 @@ export interface SalesSummary {
 
 // コース名の選択肢
 export const COURSE_OPTIONS = [
-  "30分整体",
-  "60分整体",
-  "90分整体",
-  "回数券",
+  "整体①",
+  "整体②",
   "その他",
 ] as const;
 
 export type CourseOption = (typeof COURSE_OPTIONS)[number];
+
+// コース別の固定金額（その他は手入力）
+export const COURSE_PRICES: Record<string, number | null> = {
+  "整体①": 6000,
+  "整体②": 10000,
+  "その他": null,
+};

@@ -20,7 +20,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
-import { COURSE_OPTIONS, type Sale, type SalesSummary } from "@shared/schema";
+import { COURSE_OPTIONS, COURSE_PRICES, type Sale, type SalesSummary } from "@shared/schema";
 
 function formatDateJapanese(dateString: string): string {
   const date = new Date(dateString);
@@ -339,16 +339,23 @@ export default function SalesScreen() {
               style={[
                 styles.inputField,
                 styles.amountInputContainer,
-                { backgroundColor: "#FFFFFF", borderColor: theme.border },
+                { 
+                  backgroundColor: selectedCourse && COURSE_PRICES[selectedCourse] != null ? theme.backgroundDefault : "#FFFFFF", 
+                  borderColor: theme.border 
+                },
               ]}
             >
               <TextInput
-                style={styles.amountInput}
+                style={[
+                  styles.amountInput,
+                  selectedCourse && COURSE_PRICES[selectedCourse] != null && { color: theme.textSecondary },
+                ]}
                 value={amount}
                 onChangeText={handleAmountChange}
                 keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor={theme.textSecondary}
+                editable={!selectedCourse || COURSE_PRICES[selectedCourse] == null}
               />
               <ThemedText style={styles.currencyLabel}>円</ThemedText>
             </View>
@@ -470,17 +477,34 @@ export default function SalesScreen() {
                 ]}
                 onPress={() => {
                   setSelectedCourse(course);
+                  const price = COURSE_PRICES[course];
+                  if (price !== null) {
+                    setAmount(String(price));
+                  } else {
+                    setAmount("");
+                  }
                   setShowCoursePicker(false);
                 }}
               >
-                <ThemedText
-                  style={[
-                    styles.courseOptionText,
-                    selectedCourse === course && { color: theme.warmBrown, fontWeight: "600" },
-                  ]}
-                >
-                  {course}
-                </ThemedText>
+                <View style={styles.courseOptionRow}>
+                  <ThemedText
+                    style={[
+                      styles.courseOptionText,
+                      selectedCourse === course && { color: theme.warmBrown, fontWeight: "600" },
+                    ]}
+                  >
+                    {course}
+                  </ThemedText>
+                  {COURSE_PRICES[course] !== null ? (
+                    <ThemedText style={[styles.courseOptionPrice, { color: theme.textSecondary }]}>
+                      {formatAmount(COURSE_PRICES[course]!)}円
+                    </ThemedText>
+                  ) : (
+                    <ThemedText style={[styles.courseOptionPrice, { color: theme.textSecondary }]}>
+                      手入力
+                    </ThemedText>
+                  )}
+                </View>
               </Pressable>
             ))}
           </View>
@@ -570,12 +594,16 @@ export default function SalesScreen() {
                 ]}
               >
                 <TextInput
-                  style={styles.amountInput}
+                  style={[
+                    styles.amountInput,
+                    editCourse && COURSE_PRICES[editCourse] != null && { color: theme.textSecondary },
+                  ]}
                   value={editAmount}
                   onChangeText={handleEditAmountChange}
                   keyboardType="number-pad"
                   placeholder="0"
                   placeholderTextColor={theme.textSecondary}
+                  editable={!editCourse || COURSE_PRICES[editCourse] == null}
                 />
                 <ThemedText style={styles.currencyLabel}>円</ThemedText>
               </View>
@@ -658,17 +686,32 @@ export default function SalesScreen() {
                 ]}
                 onPress={() => {
                   setEditCourse(course);
+                  const price = COURSE_PRICES[course];
+                  if (price !== null) {
+                    setEditAmount(String(price));
+                  }
                   setShowEditCoursePicker(false);
                 }}
               >
-                <ThemedText
-                  style={[
-                    styles.courseOptionText,
-                    editCourse === course && { color: theme.warmBrown, fontWeight: "600" },
-                  ]}
-                >
-                  {course}
-                </ThemedText>
+                <View style={styles.courseOptionRow}>
+                  <ThemedText
+                    style={[
+                      styles.courseOptionText,
+                      editCourse === course && { color: theme.warmBrown, fontWeight: "600" },
+                    ]}
+                  >
+                    {course}
+                  </ThemedText>
+                  {COURSE_PRICES[course] !== null ? (
+                    <ThemedText style={[styles.courseOptionPrice, { color: theme.textSecondary }]}>
+                      {formatAmount(COURSE_PRICES[course]!)}円
+                    </ThemedText>
+                  ) : (
+                    <ThemedText style={[styles.courseOptionPrice, { color: theme.textSecondary }]}>
+                      手入力
+                    </ThemedText>
+                  )}
+                </View>
               </Pressable>
             ))}
           </View>
@@ -847,6 +890,15 @@ const styles = StyleSheet.create({
   },
   courseOptionText: {
     fontSize: 18,
+  },
+  courseOptionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+  },
+  courseOptionPrice: {
+    fontSize: 16,
   },
   editModal: {
     borderTopLeftRadius: BorderRadius.lg,
