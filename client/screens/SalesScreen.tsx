@@ -44,6 +44,7 @@ export default function SalesScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<string>("");
   const [showCoursePicker, setShowCoursePicker] = useState(false);
+  const [quantity, setQuantity] = useState(1);
   const [amount, setAmount] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState("保存しました");
@@ -52,6 +53,7 @@ export default function SalesScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editDate, setEditDate] = useState(new Date());
   const [editCourse, setEditCourse] = useState("");
+  const [editQuantity, setEditQuantity] = useState(1);
   const [editAmount, setEditAmount] = useState("");
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
   const [showEditCoursePicker, setShowEditCoursePicker] = useState(false);
@@ -73,6 +75,7 @@ export default function SalesScreen() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
       setSelectedDate(new Date());
       setSelectedCourse("");
+      setQuantity(1);
       setAmount("");
       setSuccessMessage("保存しました");
       setShowSuccess(true);
@@ -152,6 +155,12 @@ export default function SalesScreen() {
     setEditDate(new Date(sale.date));
     setEditCourse(sale.course);
     setEditAmount(sale.amount.toLocaleString("ja-JP"));
+    const unitPrice = COURSE_PRICES[sale.course];
+    if (unitPrice != null && sale.amount % unitPrice === 0) {
+      setEditQuantity(sale.amount / unitPrice);
+    } else {
+      setEditQuantity(1);
+    }
     setShowEditModal(true);
   };
 
@@ -334,6 +343,57 @@ export default function SalesScreen() {
           </View>
 
           <View style={styles.inputGroup}>
+            <ThemedText style={styles.inputLabel}>人数</ThemedText>
+            <View style={styles.quantityContainer}>
+              <Pressable
+                onPress={() => {
+                  if (quantity > 1) {
+                    const newQty = quantity - 1;
+                    setQuantity(newQty);
+                    const price = COURSE_PRICES[selectedCourse];
+                    if (price != null) {
+                      setAmount((price * newQty).toLocaleString("ja-JP"));
+                    }
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.quantityButton,
+                  {
+                    backgroundColor: pressed ? theme.backgroundDefault : "#FFFFFF",
+                    borderColor: theme.border,
+                    opacity: quantity <= 1 ? 0.4 : 1,
+                  },
+                ]}
+                disabled={quantity <= 1}
+              >
+                <Feather name="minus" size={20} color={theme.text} />
+              </Pressable>
+              <View style={[styles.quantityDisplay, { borderColor: theme.border }]}>
+                <ThemedText style={styles.quantityText}>{quantity}人</ThemedText>
+              </View>
+              <Pressable
+                onPress={() => {
+                  const newQty = quantity + 1;
+                  setQuantity(newQty);
+                  const price = COURSE_PRICES[selectedCourse];
+                  if (price != null) {
+                    setAmount((price * newQty).toLocaleString("ja-JP"));
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.quantityButton,
+                  {
+                    backgroundColor: pressed ? theme.backgroundDefault : "#FFFFFF",
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <Feather name="plus" size={20} color={theme.text} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
             <ThemedText style={styles.inputLabel}>金額（税込）</ThemedText>
             <View
               style={[
@@ -478,8 +538,8 @@ export default function SalesScreen() {
                 onPress={() => {
                   setSelectedCourse(course);
                   const price = COURSE_PRICES[course];
-                  if (price !== null) {
-                    setAmount(String(price));
+                  if (price != null) {
+                    setAmount((price * quantity).toLocaleString("ja-JP"));
                   } else {
                     setAmount("");
                   }
@@ -585,6 +645,57 @@ export default function SalesScreen() {
             </View>
 
             <View style={styles.inputGroup}>
+              <ThemedText style={styles.inputLabel}>人数</ThemedText>
+              <View style={styles.quantityContainer}>
+                <Pressable
+                  onPress={() => {
+                    if (editQuantity > 1) {
+                      const newQty = editQuantity - 1;
+                      setEditQuantity(newQty);
+                      const price = COURSE_PRICES[editCourse];
+                      if (price != null) {
+                        setEditAmount((price * newQty).toLocaleString("ja-JP"));
+                      }
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.quantityButton,
+                    {
+                      backgroundColor: pressed ? theme.backgroundDefault : "#FFFFFF",
+                      borderColor: theme.border,
+                      opacity: editQuantity <= 1 ? 0.4 : 1,
+                    },
+                  ]}
+                  disabled={editQuantity <= 1}
+                >
+                  <Feather name="minus" size={20} color={theme.text} />
+                </Pressable>
+                <View style={[styles.quantityDisplay, { borderColor: theme.border }]}>
+                  <ThemedText style={styles.quantityText}>{editQuantity}人</ThemedText>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    const newQty = editQuantity + 1;
+                    setEditQuantity(newQty);
+                    const price = COURSE_PRICES[editCourse];
+                    if (price != null) {
+                      setEditAmount((price * newQty).toLocaleString("ja-JP"));
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.quantityButton,
+                    {
+                      backgroundColor: pressed ? theme.backgroundDefault : "#FFFFFF",
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Feather name="plus" size={20} color={theme.text} />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>金額（税込）</ThemedText>
               <View
                 style={[
@@ -687,8 +798,10 @@ export default function SalesScreen() {
                 onPress={() => {
                   setEditCourse(course);
                   const price = COURSE_PRICES[course];
-                  if (price !== null) {
-                    setEditAmount(String(price));
+                  if (price != null) {
+                    setEditAmount((price * editQuantity).toLocaleString("ja-JP"));
+                  } else {
+                    setEditAmount("");
                   }
                   setShowEditCoursePicker(false);
                 }}
@@ -899,6 +1012,32 @@ const styles = StyleSheet.create({
   },
   courseOptionPrice: {
     fontSize: 16,
+  },
+  quantityContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  quantityButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quantityDisplay: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    marginHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+    minWidth: 80,
+    alignItems: "center",
+  },
+  quantityText: {
+    fontSize: 18,
+    fontWeight: "600",
   },
   editModal: {
     borderTopLeftRadius: BorderRadius.lg,
