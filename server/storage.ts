@@ -1,4 +1,4 @@
-import { sales, type Sale, type InsertSale, type SalesSummary } from "@shared/schema";
+import { sales, expenses, type Sale, type InsertSale, type SalesSummary, type Expense, type InsertExpense, type CashBookSummary } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 
@@ -101,4 +101,79 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
+// 支出データのストレージクラス
+export class ExpenseStorage {
+  async getExpenses(): Promise<Expense[]> {
+    return db.select().from(expenses).orderBy(desc(expenses.createdAt));
+  }
+
+  async getExpenseById(id: number): Promise<Expense | undefined> {
+    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    return expense || undefined;
+  }
+
+  async createExpense(insertExpense: InsertExpense): Promise<Expense> {
+    const [expense] = await db.insert(expenses).values(insertExpense).returning();
+    return expense;
+  }
+
+  async updateExpense(id: number, updateData: Partial<InsertExpense>): Promise<Expense | undefined> {
+    const [expense] = await db
+      .update(expenses)
+      .set(updateData)
+      .where(eq(expenses.id, id))
+      .returning();
+    return expense || undefined;
+  }
+
+  async deleteExpense(id: number): Promise<boolean> {
+    const result = await db.delete(expenses).where(eq(expenses.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getExpensesByDateRange(startDate: string, endDate: string): Promise<Expense[]> {
+    return db
+      .select()
+      .from(expenses)
+      .where(and(gte(expenses.date, startDate), lte(expenses.date, endDate)))
+      .orderBy(desc(expenses.date));
+  }
+
+  async getCashBookSummary(year: number, month: number): Promise<CashBookSummary> {
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+
+    // 月間売上（収入）を取得
+    const salesResult = await db
+      .select({
+        total: sql<number>`COALESCE(SUM(${sales.amount}), 0)::int`,
+      })
+      .from(sales)
+      .where(and(gte(sales.date, startDate), lte(sales.date, endDate)));
+    
+    const income = salesResult[0]?.total || 0;
+
+    // 月間支出を取得
+    const expensesResult = await db
+      .select({
+        total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)::int`,
+      })
+      .from(expenses)
+      .where(and(gte(expenses.date, startDate), lte(expenses.date, endDate)));
+    
+    const totalExpenses = expensesResult[0]?.total || 0;
+
+    // 月間支出一覧
+    const expenseList = await this.getExpensesByDateRange(startDate, endDate);
+
+    return {
+      income,
+      expenses: totalExpenses,
+      balance: income - totalExpenses,
+      expenseList,
+    };
+  }
+}
+
 export const storage = new DatabaseStorage();
+export const expenseStorage = new ExpenseStorage();
