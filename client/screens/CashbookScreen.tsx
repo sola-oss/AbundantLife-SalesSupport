@@ -15,6 +15,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Feather } from "@expo/vector-icons";
+import { File, Paths } from "expo-file-system/next";
+import * as Sharing from "expo-sharing";
+import * as Print from "expo-print";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -173,6 +176,166 @@ export default function CashbookScreen() {
     setShowAddModal(true);
   };
 
+  const generateCSV = useCallback(() => {
+    if (!data?.transactions || data.transactions.length === 0) return "";
+    
+    const header = "日付,種類,内容,入金,出金,残高\n";
+    const rows = data.transactions.map((tx) => {
+      const date = tx.date;
+      const type = tx.type === "income" ? "入金" : "出金";
+      const description = tx.description.replace(/,/g, "，");
+      const income = tx.type === "income" ? tx.amount : "";
+      const expense = tx.type === "expense" ? tx.amount : "";
+      const balance = tx.balance;
+      return `${date},${type},${description},${income},${expense},${balance}`;
+    }).join("\n");
+    
+    const summary = `\n\n合計,,入金合計,${data.totalIncome},,\n,,出金合計,,${data.totalExpense},\n,,残高,,,,${data.balance}`;
+    
+    return header + rows + summary;
+  }, [data]);
+
+  const handleExportCSV = useCallback(async () => {
+    const csvContent = generateCSV();
+    if (!csvContent) {
+      if (Platform.OS === "web") {
+        window.alert("エクスポートするデータがありません");
+      } else {
+        Alert.alert("注意", "エクスポートするデータがありません");
+      }
+      return;
+    }
+
+    const filename = `現金出納帳_${selectedYear}年${selectedMonth}月.csv`;
+
+    if (Platform.OS === "web") {
+      const BOM = "\uFEFF";
+      const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setSuccessMessage("CSVをダウンロードしました");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    } else {
+      try {
+        const file = new File(Paths.cache, filename);
+        await file.create();
+        await file.write(csvContent);
+        
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: "text/csv",
+            dialogTitle: "現金出納帳をエクスポート",
+          });
+        } else {
+          Alert.alert("完了", `ファイルを保存しました: ${filename}`);
+        }
+      } catch (error) {
+        Alert.alert("エラー", "エクスポートに失敗しました");
+      }
+    }
+  }, [generateCSV, selectedYear, selectedMonth]);
+
+  const handlePrint = useCallback(async () => {
+    if (!data?.transactions || data.transactions.length === 0) {
+      if (Platform.OS === "web") {
+        window.alert("印刷するデータがありません");
+      } else {
+        Alert.alert("注意", "印刷するデータがありません");
+      }
+      return;
+    }
+
+    const tableRows = data.transactions.map((tx) => {
+      const isIncome = tx.type === "income";
+      return `
+        <tr>
+          <td>${tx.date}</td>
+          <td>${tx.description}</td>
+          <td style="color: #4CAF50; text-align: right;">${isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
+          <td style="color: #E53935; text-align: right;">${!isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
+          <td style="text-align: right;">¥${formatAmount(tx.balance)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>現金出納帳 ${selectedYear}年${selectedMonth}月</title>
+          <style>
+            body { font-family: sans-serif; padding: 20px; }
+            h1 { text-align: center; font-size: 24px; margin-bottom: 20px; }
+            .summary { display: flex; justify-content: space-around; margin-bottom: 20px; }
+            .summary-item { text-align: center; }
+            .summary-label { font-size: 14px; color: #666; }
+            .summary-value { font-size: 20px; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #ddd; padding: 8px; }
+            th { background-color: #f5f5f5; }
+            .income { color: #4CAF50; }
+            .expense { color: #E53935; }
+          </style>
+        </head>
+        <body>
+          <h1>現金出納帳 ${selectedYear}年${selectedMonth}月</h1>
+          <div class="summary">
+            <div class="summary-item">
+              <div class="summary-label">入金合計</div>
+              <div class="summary-value income">¥${formatAmount(data.totalIncome)}</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-label">出金合計</div>
+              <div class="summary-value expense">¥${formatAmount(data.totalExpense)}</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-label">残高</div>
+              <div class="summary-value">¥${formatAmount(data.balance)}</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>内容</th>
+                <th>入金</th>
+                <th>出金</th>
+                <th>残高</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    if (Platform.OS === "web") {
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.print();
+      }
+    } else {
+      try {
+        await Print.printAsync({ html });
+      } catch (error) {
+        Alert.alert("エラー", "印刷に失敗しました");
+      }
+    }
+  }, [data, selectedYear, selectedMonth]);
+
   const renderTransaction = ({ item }: { item: CashbookTransaction }) => {
     const isIncome = item.type === "income";
     return (
@@ -298,6 +461,27 @@ export default function CashbookScreen() {
             <Feather name="minus" size={18} color="#E53935" />
             <ThemedText style={[styles.addButtonText, { color: "#E53935" }]}>
               出金追加
+            </ThemedText>
+          </Pressable>
+        </View>
+
+        <View style={styles.exportRow}>
+          <Pressable
+            style={[styles.exportButton, { backgroundColor: theme.backgroundSecondary }]}
+            onPress={handleExportCSV}
+          >
+            <Feather name="download" size={18} color={theme.warmBrown} />
+            <ThemedText style={[styles.exportButtonText, { color: theme.warmBrown }]}>
+              CSV出力
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.exportButton, { backgroundColor: theme.backgroundSecondary }]}
+            onPress={handlePrint}
+          >
+            <Feather name="printer" size={18} color={theme.warmBrown} />
+            <ThemedText style={[styles.exportButtonText, { color: theme.warmBrown }]}>
+              印刷
             </ThemedText>
           </Pressable>
         </View>
@@ -610,6 +794,24 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   addButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  exportRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  exportButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  exportButtonText: {
     fontSize: 14,
     fontWeight: "600",
   },
