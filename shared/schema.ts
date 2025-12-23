@@ -44,33 +44,3 @@ export const COURSE_PRICES: Record<string, number | null> = {
   "整体②": 10000,
   "その他": null,
 };
-
-// 支出テーブル
-export const expenses = pgTable("expenses", {
-  id: serial("id").primaryKey(),
-  date: text("date").notNull(),
-  vendor: text("vendor").notNull(),
-  description: text("description"),
-  amount: integer("amount").notNull(),
-  receiptImage: text("receipt_image"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// 支出用Zodスキーマ
-export const insertExpenseSchema = createInsertSchema(expenses).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const selectExpenseSchema = createSelectSchema(expenses);
-
-export type Expense = typeof expenses.$inferSelect;
-export type InsertExpense = z.infer<typeof insertExpenseSchema>;
-
-// 出納帳サマリーの型
-export interface CashBookSummary {
-  income: number;
-  expenses: number;
-  balance: number;
-  expenseList: Expense[];
-}
