@@ -1,0 +1,791 @@
+import React, { useState, useCallback, useMemo } from "react";
+import {
+  View,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  FlatList,
+  Platform,
+  Modal,
+  Alert,
+  ScrollView,
+} from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { Feather } from "@expo/vector-icons";
+
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import { Colors, Spacing, BorderRadius } from "@/constants/theme";
+import { apiRequest } from "@/lib/query-client";
+import type { CashbookSummary, CashbookTransaction } from "@shared/schema";
+
+type FilterType = "all" | "income" | "expense";
+
+function formatDateJapanese(dateString: string): string {
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `${year}年${month}月${day}日`;
+}
+
+function formatAmount(amount: number): string {
+  return amount.toLocaleString("ja-JP");
+}
+
+export default function CashbookScreen() {
+  const theme = Colors.light;
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [filterType, setFilterType] = useState<FilterType>("all");
+
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addType, setAddType] = useState<"income" | "expense">("expense");
+  const [addDate, setAddDate] = useState(new Date());
+  const [addDescription, setAddDescription] = useState("");
+  const [addAmount, setAddAmount] = useState("");
+  const [showAddDatePicker, setShowAddDatePicker] = useState(false);
+
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const { data, isLoading } = useQuery<CashbookSummary>({
+    queryKey: [`/api/cashbook/${selectedYear}/${selectedMonth}`],
+  });
+
+  const createEntryMutation = useMutation({
+    mutationFn: async (entryData: {
+      date: string;
+      type: string;
+      description: string;
+      amount: number;
+    }) => {
+      const res = await apiRequest("POST", "/api/cashbook", entryData);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/cashbook/${selectedYear}/${selectedMonth}`] });
+      setShowAddModal(false);
+      resetAddForm();
+      setSuccessMessage("登録しました");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    },
+  });
+
+  const deleteEntryMutation = useMutation({
+    mutationFn: async (manualId: number) => {
+      await apiRequest("DELETE", `/api/cashbook/${manualId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/cashbook/${selectedYear}/${selectedMonth}`] });
+      setSuccessMessage("削除しました");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    },
+  });
+
+  const resetAddForm = () => {
+    setAddType("expense");
+    setAddDate(new Date());
+    setAddDescription("");
+    setAddAmount("");
+  };
+
+  const filteredTransactions = useMemo(() => {
+    if (!data?.transactions) return [];
+    if (filterType === "all") return data.transactions;
+    return data.transactions.filter((tx) => tx.type === filterType);
+  }, [data?.transactions, filterType]);
+
+  const handleAddSubmit = useCallback(() => {
+    if (!addDescription || !addAmount) return;
+    const amountNumber = parseInt(addAmount.replace(/,/g, ""), 10);
+    if (isNaN(amountNumber) || amountNumber <= 0) return;
+
+    createEntryMutation.mutate({
+      date: addDate.toISOString().split("T")[0],
+      type: addType,
+      description: addDescription,
+      amount: amountNumber,
+    });
+  }, [addDate, addType, addDescription, addAmount, createEntryMutation]);
+
+  const handleAmountChange = (text: string) => {
+    const numericText = text.replace(/[^0-9]/g, "");
+    if (numericText) {
+      const num = parseInt(numericText, 10);
+      setAddAmount(num.toLocaleString("ja-JP"));
+    } else {
+      setAddAmount("");
+    }
+  };
+
+  const onAddDateChange = (_event: any, date?: Date) => {
+    if (Platform.OS === "android") {
+      setShowAddDatePicker(false);
+    }
+    if (date) {
+      setAddDate(date);
+    }
+  };
+
+  const handleDelete = (tx: CashbookTransaction) => {
+    if (tx.source === "sales") {
+      if (Platform.OS === "web") {
+        window.alert("売上データは売上入力画面から削除してください");
+      } else {
+        Alert.alert("注意", "売上データは売上入力画面から削除してください");
+      }
+      return;
+    }
+
+    if (!tx.manualId) return;
+
+    if (Platform.OS === "web") {
+      if (window.confirm("この取引を削除しますか？")) {
+        deleteEntryMutation.mutate(tx.manualId);
+      }
+    } else {
+      Alert.alert("確認", "この取引を削除しますか？", [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "削除",
+          style: "destructive",
+          onPress: () => deleteEntryMutation.mutate(tx.manualId!),
+        },
+      ]);
+    }
+  };
+
+  const openAddModal = (type: "income" | "expense") => {
+    setAddType(type);
+    setAddDate(new Date());
+    setShowAddModal(true);
+  };
+
+  const renderTransaction = ({ item }: { item: CashbookTransaction }) => {
+    const isIncome = item.type === "income";
+    return (
+      <Pressable
+        style={[styles.transactionItem, { borderBottomColor: theme.border }]}
+        onLongPress={() => handleDelete(item)}
+      >
+        <View style={styles.transactionLeft}>
+          <ThemedText style={styles.transactionDate}>
+            {formatDateJapanese(item.date)}
+          </ThemedText>
+          <ThemedText style={[styles.transactionDesc, { color: theme.textSecondary }]}>
+            {item.description}
+            {item.source === "sales" ? " [自動]" : ""}
+          </ThemedText>
+        </View>
+        <View style={styles.transactionRight}>
+          <ThemedText
+            style={[
+              styles.transactionAmount,
+              { color: isIncome ? "#4CAF50" : "#E53935" },
+            ]}
+          >
+            {isIncome ? "+" : "-"}¥{formatAmount(item.amount)}
+          </ThemedText>
+          <ThemedText style={[styles.transactionBalance, { color: theme.textSecondary }]}>
+            残高: ¥{formatAmount(item.balance)}
+          </ThemedText>
+        </View>
+      </Pressable>
+    );
+  };
+
+  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  return (
+    <ThemedView style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={{
+          paddingTop: headerHeight + Spacing.lg,
+          paddingBottom: insets.bottom + Spacing.xl,
+          paddingHorizontal: Spacing.lg,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Pressable
+          style={[styles.monthSelector, { backgroundColor: theme.backgroundSecondary }]}
+          onPress={() => setShowMonthPicker(true)}
+        >
+          <ThemedText style={styles.monthText}>
+            {selectedYear}年{selectedMonth}月
+          </ThemedText>
+          <Feather name="chevron-down" size={20} color={theme.text} />
+        </Pressable>
+
+        <View style={styles.summaryRow}>
+          <View style={[styles.summaryCard, { backgroundColor: "#E8F5E9" }]}>
+            <ThemedText style={[styles.summaryLabel, { color: "#4CAF50" }]}>
+              入金
+            </ThemedText>
+            <ThemedText style={[styles.summaryAmount, { color: "#4CAF50" }]}>
+              ¥{formatAmount(data?.totalIncome || 0)}
+            </ThemedText>
+          </View>
+          <View style={[styles.summaryCard, { backgroundColor: "#FFEBEE" }]}>
+            <ThemedText style={[styles.summaryLabel, { color: "#E53935" }]}>
+              出金
+            </ThemedText>
+            <ThemedText style={[styles.summaryAmount, { color: "#E53935" }]}>
+              ¥{formatAmount(data?.totalExpense || 0)}
+            </ThemedText>
+          </View>
+        </View>
+
+        <View style={[styles.balanceCard, { backgroundColor: theme.backgroundSecondary }]}>
+          <ThemedText style={styles.balanceLabel}>残高</ThemedText>
+          <ThemedText style={styles.balanceAmount}>
+            ¥{formatAmount(data?.balance || 0)}
+          </ThemedText>
+        </View>
+
+        <View style={styles.filterRow}>
+          {(["all", "income", "expense"] as FilterType[]).map((type) => (
+            <Pressable
+              key={type}
+              style={[
+                styles.filterButton,
+                {
+                  backgroundColor:
+                    filterType === type ? theme.warmBrown : theme.backgroundSecondary,
+                },
+              ]}
+              onPress={() => setFilterType(type)}
+            >
+              <ThemedText
+                style={[
+                  styles.filterButtonText,
+                  { color: filterType === type ? "#FFF" : theme.text },
+                ]}
+              >
+                {type === "all" ? "すべて" : type === "income" ? "入金" : "出金"}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={[styles.addButton, { backgroundColor: "#E8F5E9" }]}
+            onPress={() => openAddModal("income")}
+          >
+            <Feather name="plus" size={18} color="#4CAF50" />
+            <ThemedText style={[styles.addButtonText, { color: "#4CAF50" }]}>
+              入金追加
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.addButton, { backgroundColor: "#FFEBEE" }]}
+            onPress={() => openAddModal("expense")}
+          >
+            <Feather name="minus" size={18} color="#E53935" />
+            <ThemedText style={[styles.addButtonText, { color: "#E53935" }]}>
+              出金追加
+            </ThemedText>
+          </Pressable>
+        </View>
+
+        <View style={[styles.listSection, { backgroundColor: theme.backgroundSecondary }]}>
+          <ThemedText style={styles.sectionTitle}>取引一覧</ThemedText>
+          {isLoading ? (
+            <ThemedText style={[styles.emptyText, { color: theme.textSecondary }]}>
+              読み込み中...
+            </ThemedText>
+          ) : filteredTransactions.length === 0 ? (
+            <ThemedText style={[styles.emptyText, { color: theme.textSecondary }]}>
+              取引データがありません
+            </ThemedText>
+          ) : (
+            <FlatList
+              data={filteredTransactions}
+              renderItem={renderTransaction}
+              keyExtractor={(item) => `${item.source}-${item.manualId || item.saleId || item.id}`}
+              scrollEnabled={false}
+            />
+          )}
+        </View>
+
+        <ThemedText style={[styles.hint, { color: theme.textSecondary }]}>
+          売上データは自動で入金として反映されます。手動エントリは長押しで削除できます。
+        </ThemedText>
+      </ScrollView>
+
+      <Modal
+        visible={showMonthPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMonthPicker(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowMonthPicker(false)}
+        >
+          <View
+            style={[styles.monthPickerModal, { backgroundColor: theme.backgroundDefault }]}
+          >
+            <ThemedText style={styles.monthPickerTitle}>年月を選択</ThemedText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.yearRow}>
+                {years.map((year) => (
+                  <Pressable
+                    key={year}
+                    style={[
+                      styles.yearButton,
+                      {
+                        backgroundColor:
+                          selectedYear === year ? theme.warmBrown : theme.backgroundSecondary,
+                      },
+                    ]}
+                    onPress={() => setSelectedYear(year)}
+                  >
+                    <ThemedText
+                      style={{ color: selectedYear === year ? "#FFF" : theme.text }}
+                    >
+                      {year}年
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+            <View style={styles.monthGrid}>
+              {months.map((month) => (
+                <Pressable
+                  key={month}
+                  style={[
+                    styles.monthButton,
+                    {
+                      backgroundColor:
+                        selectedMonth === month ? theme.warmBrown : theme.backgroundSecondary,
+                    },
+                  ]}
+                  onPress={() => {
+                    setSelectedMonth(month);
+                    setShowMonthPicker(false);
+                  }}
+                >
+                  <ThemedText
+                    style={{ color: selectedMonth === month ? "#FFF" : theme.text }}
+                  >
+                    {month}月
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowAddModal(false)}
+        >
+          <KeyboardAwareScrollViewCompat>
+            <View
+              style={[styles.addModal, { backgroundColor: theme.backgroundDefault }]}
+              onStartShouldSetResponder={() => true}
+            >
+              <ThemedText style={styles.addModalTitle}>
+                {addType === "income" ? "入金を追加" : "出金を追加"}
+              </ThemedText>
+
+              <View style={styles.typeToggle}>
+                <Pressable
+                  style={[
+                    styles.typeButton,
+                    { backgroundColor: addType === "income" ? "#E8F5E9" : theme.backgroundSecondary },
+                  ]}
+                  onPress={() => setAddType("income")}
+                >
+                  <ThemedText
+                    style={{ color: addType === "income" ? "#4CAF50" : theme.text }}
+                  >
+                    入金
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.typeButton,
+                    { backgroundColor: addType === "expense" ? "#FFEBEE" : theme.backgroundSecondary },
+                  ]}
+                  onPress={() => setAddType("expense")}
+                >
+                  <ThemedText
+                    style={{ color: addType === "expense" ? "#E53935" : theme.text }}
+                  >
+                    出金
+                  </ThemedText>
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={[styles.dateButton, { backgroundColor: theme.backgroundSecondary }]}
+                onPress={() => setShowAddDatePicker(true)}
+              >
+                <Feather name="calendar" size={20} color={theme.text} />
+                <ThemedText style={styles.dateButtonText}>
+                  {formatDateJapanese(addDate.toISOString().split("T")[0])}
+                </ThemedText>
+              </Pressable>
+
+              {showAddDatePicker && (
+                <DateTimePicker
+                  value={addDate}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "inline" : "default"}
+                  onChange={onAddDateChange}
+                />
+              )}
+
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: theme.backgroundSecondary, color: theme.text },
+                ]}
+                placeholder="説明（例：事務用品購入）"
+                placeholderTextColor={theme.textSecondary}
+                value={addDescription}
+                onChangeText={setAddDescription}
+              />
+
+              <View
+                style={[styles.amountInputContainer, { backgroundColor: theme.backgroundSecondary }]}
+              >
+                <ThemedText style={styles.currencySymbol}>¥</ThemedText>
+                <TextInput
+                  style={[styles.amountInput, { color: theme.text }]}
+                  placeholder="金額"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="numeric"
+                  value={addAmount}
+                  onChangeText={handleAmountChange}
+                />
+              </View>
+
+              <Pressable
+                style={[
+                  styles.submitButton,
+                  {
+                    backgroundColor:
+                      addDescription && addAmount ? theme.primary : theme.backgroundTertiary,
+                  },
+                ]}
+                onPress={handleAddSubmit}
+                disabled={!addDescription || !addAmount || createEntryMutation.isPending}
+              >
+                <ThemedText
+                  style={[
+                    styles.submitButtonText,
+                    { color: addDescription && addAmount ? theme.warmBrown : theme.textSecondary },
+                  ]}
+                >
+                  {createEntryMutation.isPending ? "登録中..." : "登録"}
+                </ThemedText>
+              </Pressable>
+
+              <Pressable style={styles.cancelButton} onPress={() => setShowAddModal(false)}>
+                <ThemedText style={[styles.cancelButtonText, { color: theme.textSecondary }]}>
+                  キャンセル
+                </ThemedText>
+              </Pressable>
+            </View>
+          </KeyboardAwareScrollViewCompat>
+        </Pressable>
+      </Modal>
+
+      {showSuccess && (
+        <View style={[styles.successToast, { backgroundColor: theme.success }]}>
+          <Feather name="check-circle" size={20} color={theme.warmBrown} />
+          <ThemedText style={[styles.successText, { color: theme.warmBrown }]}>
+            {successMessage}
+          </ThemedText>
+        </View>
+      )}
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  monthSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  monthText: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  summaryRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  summaryCard: {
+    flex: 1,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+  },
+  summaryLabel: {
+    fontSize: 14,
+    marginBottom: Spacing.xs,
+  },
+  summaryAmount: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  balanceCard: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    marginBottom: Spacing.xs,
+  },
+  balanceAmount: {
+    fontSize: 28,
+    fontWeight: "700",
+  },
+  filterRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  filterButton: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+  },
+  filterButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  buttonRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  addButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  addButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  listSection: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    minHeight: 200,
+    marginBottom: Spacing.md,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: Spacing.md,
+  },
+  emptyText: {
+    textAlign: "center",
+    paddingVertical: Spacing.xl,
+  },
+  transactionItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  transactionLeft: {
+    flex: 1,
+  },
+  transactionDate: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  transactionDesc: {
+    fontSize: 12,
+  },
+  transactionRight: {
+    alignItems: "flex-end",
+  },
+  transactionAmount: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  transactionBalance: {
+    fontSize: 12,
+  },
+  hint: {
+    fontSize: 12,
+    textAlign: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.lg,
+  },
+  monthPickerModal: {
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+  },
+  monthPickerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: Spacing.lg,
+  },
+  yearRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  yearButton: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  monthGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+  },
+  monthButton: {
+    width: "22%",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+  },
+  addModal: {
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+  },
+  addModalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: Spacing.lg,
+  },
+  typeToggle: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  typeButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+  },
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  dateButtonText: {
+    fontSize: 16,
+  },
+  textInput: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    fontSize: 16,
+    marginBottom: Spacing.md,
+  },
+  amountInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.lg,
+  },
+  currencySymbol: {
+    fontSize: 20,
+    fontWeight: "600",
+    marginRight: Spacing.sm,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 20,
+  },
+  submitButton: {
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  cancelButton: {
+    paddingVertical: Spacing.md,
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    fontSize: 14,
+  },
+  successToast: {
+    position: "absolute",
+    bottom: 100,
+    left: Spacing.lg,
+    right: Spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
+  },
+  successText: {
+    fontSize: 16,
+    fontWeight: "500",
+  },
+});

@@ -11,6 +11,17 @@ export const sales = pgTable("sales", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// 現金出納帳テーブル（手動入力の入金・出金記録）
+export const cashbook = pgTable("cashbook", {
+  id: serial("id").primaryKey(),
+  date: text("date").notNull(),
+  type: text("type").notNull(), // 'income' | 'expense'
+  description: text("description").notNull(),
+  amount: integer("amount").notNull(),
+  saleId: integer("sale_id"), // 売上連携時のID（手動入力はnull）
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Zodスキーマ
 export const insertSaleSchema = createInsertSchema(sales).omit({
   id: true,
@@ -27,6 +38,40 @@ export interface SalesSummary {
   todayTotal: number;
   monthTotal: number;
   sales: Sale[];
+}
+
+// 現金出納帳のZodスキーマ
+export const insertCashbookSchema = createInsertSchema(cashbook).omit({
+  id: true,
+  createdAt: true,
+  saleId: true,
+});
+
+export const selectCashbookSchema = createSelectSchema(cashbook);
+
+export type CashbookEntry = typeof cashbook.$inferSelect;
+export type InsertCashbookEntry = z.infer<typeof insertCashbookSchema>;
+
+// 現金出納帳の統合エントリ（売上からの自動入金も含む）
+export interface CashbookTransaction {
+  id: number;
+  date: string;
+  type: 'income' | 'expense';
+  description: string;
+  amount: number;
+  balance: number;
+  source: 'manual' | 'sales';
+  manualId?: number;
+  saleId?: number;
+  createdAt: string;
+}
+
+// 現金出納帳のサマリー
+export interface CashbookSummary {
+  transactions: CashbookTransaction[];
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
 }
 
 // コース名の選択肢

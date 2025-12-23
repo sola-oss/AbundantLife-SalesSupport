@@ -1,6 +1,16 @@
-import { sales, type Sale, type InsertSale, type SalesSummary } from "@shared/schema";
+import { 
+  sales, 
+  cashbook,
+  type Sale, 
+  type InsertSale, 
+  type SalesSummary,
+  type CashbookEntry,
+  type InsertCashbookEntry,
+  type CashbookTransaction,
+  type CashbookSummary
+} from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
 
 // 売上データのストレージインターフェース
 export interface IStorage {
@@ -12,6 +22,12 @@ export interface IStorage {
   getSalesSummary(): Promise<SalesSummary>;
   getSalesByDateRange(startDate: string, endDate: string): Promise<Sale[]>;
   getMonthlySummary(year: number, month: number): Promise<{ date: string; total: number }[]>;
+  // 現金出納帳
+  getCashbookEntries(): Promise<CashbookEntry[]>;
+  createCashbookEntry(entry: InsertCashbookEntry): Promise<CashbookEntry>;
+  updateCashbookEntry(id: number, entry: Partial<InsertCashbookEntry>): Promise<CashbookEntry | undefined>;
+  deleteCashbookEntry(id: number): Promise<boolean>;
+  getCashbookSummary(year: number, month: number): Promise<CashbookSummary>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -98,6 +114,114 @@ export class DatabaseStorage implements IStorage {
       .orderBy(sales.date);
 
     return result;
+  }
+
+  // 現金出納帳メソッド
+  async getCashbookEntries(): Promise<CashbookEntry[]> {
+    return db.select().from(cashbook).orderBy(desc(cashbook.createdAt));
+  }
+
+  async createCashbookEntry(insertEntry: InsertCashbookEntry): Promise<CashbookEntry> {
+    const [entry] = await db.insert(cashbook).values(insertEntry).returning();
+    return entry;
+  }
+
+  async updateCashbookEntry(id: number, updateData: Partial<InsertCashbookEntry>): Promise<CashbookEntry | undefined> {
+    const [entry] = await db
+      .update(cashbook)
+      .set(updateData)
+      .where(eq(cashbook.id, id))
+      .returning();
+    return entry || undefined;
+  }
+
+  async deleteCashbookEntry(id: number): Promise<boolean> {
+    const result = await db.delete(cashbook).where(eq(cashbook.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getCashbookSummary(year: number, month: number): Promise<CashbookSummary> {
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+    // 手動入力の出納帳エントリを取得
+    const manualEntries = await db
+      .select()
+      .from(cashbook)
+      .where(and(gte(cashbook.date, startDate), lte(cashbook.date, endDate)))
+      .orderBy(asc(cashbook.date), asc(cashbook.createdAt));
+
+    // 売上データを入金として取得
+    const salesData = await db
+      .select()
+      .from(sales)
+      .where(and(gte(sales.date, startDate), lte(sales.date, endDate)))
+      .orderBy(asc(sales.date), asc(sales.createdAt));
+
+    // 統合してトランザクションリストを作成
+    const transactions: CashbookTransaction[] = [];
+    let idCounter = 1;
+
+    // 売上を入金として追加
+    for (const sale of salesData) {
+      transactions.push({
+        id: idCounter++,
+        date: sale.date,
+        type: 'income',
+        description: `売上（${sale.course}）`,
+        amount: sale.amount,
+        balance: 0,
+        source: 'sales',
+        saleId: sale.id,
+        createdAt: sale.createdAt.toISOString(),
+      });
+    }
+
+    // 手動エントリを追加
+    for (const entry of manualEntries) {
+      transactions.push({
+        id: idCounter++,
+        date: entry.date,
+        type: entry.type as 'income' | 'expense',
+        description: entry.description,
+        amount: entry.amount,
+        balance: 0,
+        source: 'manual',
+        manualId: entry.id,
+        createdAt: entry.createdAt.toISOString(),
+      });
+    }
+
+    // 日付と作成日時でソート（安定したソート）
+    transactions.sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return a.createdAt.localeCompare(b.createdAt);
+    });
+
+    // 残高を計算
+    let balance = 0;
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    for (const tx of transactions) {
+      if (tx.type === 'income') {
+        balance += tx.amount;
+        totalIncome += tx.amount;
+      } else {
+        balance -= tx.amount;
+        totalExpense += tx.amount;
+      }
+      tx.balance = balance;
+    }
+
+    return {
+      transactions,
+      totalIncome,
+      totalExpense,
+      balance,
+    };
   }
 }
 
