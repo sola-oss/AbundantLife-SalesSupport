@@ -14,24 +14,38 @@ Preferred communication style: Simple, everyday language.
 
 ### Frontend Architecture
 - **Framework**: Expo SDK 54 with React Native 0.81
-- **Navigation**: Bottom tab navigation using React Navigation (two tabs: Sales Input and Reports)
+- **Navigation**: Bottom tab navigation using React Navigation (three tabs: Sales Input, Cashbook, and Reports)
+- **Web Deployment**: Expo web build served directly from `/dist` folder - works in any browser without Expo Go
 - **State Management**: TanStack React Query for server state management
 - **Styling**: StyleSheet-based with a soft, warm color theme (beige, pale green, warm brown)
 - **UI Components**: Custom themed components (ThemedText, ThemedView, Button, Card) with consistent design tokens
 
 ### Backend Architecture
 - **Server**: Express.js running on Node.js
-- **API Design**: RESTful JSON API with endpoints for CRUD operations on sales data
+- **API Design**: RESTful JSON API with endpoints for CRUD operations on sales and cashbook data
 - **Routes**: 
   - `GET /api/sales` - Fetch all sales with summary totals
   - `POST /api/sales` - Create new sale entry
   - `PUT /api/sales/:id` - Update existing sale
   - `DELETE /api/sales/:id` - Delete sale entry
+  - `GET /api/cashbook/:year/:month` - Get cashbook summary for a month
+  - `POST /api/cashbook` - Create manual cashbook entry
+  - `DELETE /api/cashbook/:id` - Delete manual cashbook entry
 
 ### Data Storage
 - **Database**: PostgreSQL with Drizzle ORM
-- **Schema**: Single `sales` table with fields: id, date, course, amount, createdAt
+- **Schema**: 
+  - `sales` table: id, date, course, amount, createdAt
+  - `cashbook` table: id, date, type (income/expense), description, amount, createdAt
 - **Validation**: Zod schemas generated from Drizzle schema for type-safe API validation
+
+### Features
+- **Sales Input**: Record daily sales with date, course type, and amount
+- **Cashbook (出納帳)**: Track income and expenses with automatic sales integration
+  - Sales automatically appear as income entries
+  - Manual entries for other income/expenses
+  - CSV export and print functionality
+- **Reports**: View daily and monthly sales summaries
 
 ### Key Design Decisions
 
