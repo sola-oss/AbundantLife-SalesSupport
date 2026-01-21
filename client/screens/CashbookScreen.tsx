@@ -393,6 +393,29 @@ export default function CashbookScreen() {
           <Feather name="chevron-down" size={20} color={theme.text} />
         </Pressable>
 
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={[styles.addButton, { backgroundColor: "#E8F5E9" }]}
+            onPress={() => openAddModal("income")}
+          >
+            <Feather name="plus" size={18} color="#4CAF50" />
+            <ThemedText style={[styles.addButtonText, { color: "#4CAF50" }]}>
+              入金追加
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[styles.addButton, { backgroundColor: "#FFEBEE" }]}
+            onPress={() => openAddModal("expense")}
+          >
+            <Feather name="minus" size={18} color="#E53935" />
+            <ThemedText style={[styles.addButtonText, { color: "#E53935" }]}>
+              出金追加
+            </ThemedText>
+          </Pressable>
+        </View>
+
+        <View style={[styles.separator, { backgroundColor: theme.border }]} />
+
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { backgroundColor: "#E8F5E9" }]}>
             <ThemedText style={[styles.summaryLabel, { color: "#4CAF50" }]}>
@@ -442,27 +465,6 @@ export default function CashbookScreen() {
               </ThemedText>
             </Pressable>
           ))}
-        </View>
-
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={[styles.addButton, { backgroundColor: "#E8F5E9" }]}
-            onPress={() => openAddModal("income")}
-          >
-            <Feather name="plus" size={18} color="#4CAF50" />
-            <ThemedText style={[styles.addButtonText, { color: "#4CAF50" }]}>
-              入金追加
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            style={[styles.addButton, { backgroundColor: "#FFEBEE" }]}
-            onPress={() => openAddModal("expense")}
-          >
-            <Feather name="minus" size={18} color="#E53935" />
-            <ThemedText style={[styles.addButtonText, { color: "#E53935" }]}>
-              出金追加
-            </ThemedText>
-          </Pressable>
         </View>
 
         <View style={styles.exportRow}>
@@ -989,5 +991,9 @@ const styles = StyleSheet.create({
   successText: {
     fontSize: 16,
     fontWeight: "500",
+  },
+  separator: {
+    height: 1,
+    marginVertical: Spacing.lg,
   },
 });
