@@ -584,14 +584,14 @@ export default function CashbookScreen() {
         animationType="fade"
         onRequestClose={() => setShowAddModal(false)}
       >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowAddModal(false)}
-        >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setShowAddModal(false)}
+          />
           <KeyboardAwareScrollViewCompat>
             <View
               style={[styles.addModal, { backgroundColor: theme.backgroundDefault }]}
-              onStartShouldSetResponder={() => true}
             >
               <ThemedText style={styles.addModalTitle}>
                 {addType === "income" ? "入金を追加" : "出金を追加"}
@@ -626,23 +626,44 @@ export default function CashbookScreen() {
                 </Pressable>
               </View>
 
-              <Pressable
-                style={[styles.dateButton, { backgroundColor: theme.backgroundSecondary }]}
-                onPress={() => setShowAddDatePicker(true)}
-              >
-                <Feather name="calendar" size={20} color={theme.text} />
-                <ThemedText style={styles.dateButtonText}>
-                  {formatDateJapanese(addDate.toISOString().split("T")[0])}
-                </ThemedText>
-              </Pressable>
+              {Platform.OS === "web" ? (
+                <View style={[styles.dateButton, { backgroundColor: theme.backgroundSecondary }]}>
+                  <Feather name="calendar" size={20} color={theme.text} />
+                  <input
+                    type="date"
+                    value={addDate.toISOString().split("T")[0]}
+                    onChange={(e) => setAddDate(new Date(e.target.value + "T00:00:00"))}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      fontSize: 16,
+                      color: theme.text,
+                      marginLeft: 8,
+                      outline: "none",
+                    }}
+                  />
+                </View>
+              ) : (
+                <>
+                  <Pressable
+                    style={[styles.dateButton, { backgroundColor: theme.backgroundSecondary }]}
+                    onPress={() => setShowAddDatePicker(true)}
+                  >
+                    <Feather name="calendar" size={20} color={theme.text} />
+                    <ThemedText style={styles.dateButtonText}>
+                      {formatDateJapanese(addDate.toISOString().split("T")[0])}
+                    </ThemedText>
+                  </Pressable>
 
-              {showAddDatePicker && (
-                <DateTimePicker
-                  value={addDate}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "inline" : "default"}
-                  onChange={onAddDateChange}
-                />
+                  {showAddDatePicker && (
+                    <DateTimePicker
+                      value={addDate}
+                      mode="date"
+                      display={Platform.OS === "ios" ? "inline" : "default"}
+                      onChange={onAddDateChange}
+                    />
+                  )}
+                </>
               )}
 
               <TextInput
@@ -698,7 +719,7 @@ export default function CashbookScreen() {
               </Pressable>
             </View>
           </KeyboardAwareScrollViewCompat>
-        </Pressable>
+        </View>
       </Modal>
 
       {showSuccess && (
@@ -869,6 +890,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: Spacing.lg,
+  },
+  modalBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   monthPickerModal: {
     width: "100%",
