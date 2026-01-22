@@ -76,8 +76,9 @@ export interface CashbookSummary {
 
 // コース名の選択肢
 export const COURSE_OPTIONS = [
-  "整体①",
-  "整体②",
+  "整体",
+  "インディバ ボディー",
+  "インディバ フェイシャル",
   "その他",
 ] as const;
 
@@ -85,7 +86,8 @@ export type CourseOption = (typeof COURSE_OPTIONS)[number];
 
 // コース別の固定金額（その他は手入力）
 export const COURSE_PRICES: Record<string, number | null> = {
-  "整体①": 6000,
-  "整体②": 10000,
+  "整体": 6000,
+  "インディバ ボディー": 6000,
+  "インディバ フェイシャル": 10000,
   "その他": null,
 };
