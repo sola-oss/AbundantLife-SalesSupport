@@ -188,18 +188,19 @@ export default function CashbookScreen() {
   const generateCSV = useCallback(() => {
     if (!data?.transactions || data.transactions.length === 0) return "";
     
-    const header = "日付,種類,内容,入金,出金,残高\n";
+    const header = "日付,勘定科目,取引先,内容,入金,出金,残高\n";
     const rows = data.transactions.map((tx) => {
       const date = tx.date;
-      const type = tx.type === "income" ? "入金" : "出金";
+      const accountCategory = (tx.accountCategory || "").replace(/,/g, "，");
+      const client = (tx.client || "").replace(/,/g, "，");
       const description = tx.description.replace(/,/g, "，");
       const income = tx.type === "income" ? tx.amount : "";
       const expense = tx.type === "expense" ? tx.amount : "";
       const balance = tx.balance;
-      return `${date},${type},${description},${income},${expense},${balance}`;
+      return `${date},${accountCategory},${client},${description},${income},${expense},${balance}`;
     }).join("\n");
     
-    const summary = `\n\n合計,,入金合計,${data.totalIncome},,\n,,出金合計,,${data.totalExpense},\n,,残高,,,,${data.balance}`;
+    const summary = `\n\n合計,,,入金合計,${data.totalIncome},,\n,,,出金合計,,${data.totalExpense},\n,,,残高,,,,${data.balance}`;
     
     return header + rows + summary;
   }, [data]);
@@ -267,6 +268,8 @@ export default function CashbookScreen() {
       return `
         <tr>
           <td>${tx.date}</td>
+          <td>${tx.accountCategory || ""}</td>
+          <td>${tx.client || ""}</td>
           <td>${tx.description}</td>
           <td style="color: #4CAF50; text-align: right;">${isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
           <td style="color: #E53935; text-align: right;">${!isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
@@ -315,6 +318,8 @@ export default function CashbookScreen() {
             <thead>
               <tr>
                 <th>日付</th>
+                <th>勘定科目</th>
+                <th>取引先</th>
                 <th>内容</th>
                 <th>入金</th>
                 <th>出金</th>
@@ -356,6 +361,16 @@ export default function CashbookScreen() {
           <ThemedText style={styles.transactionDate}>
             {formatDateJapanese(item.date)}
           </ThemedText>
+          {item.accountCategory && (
+            <ThemedText style={[styles.transactionCategory, { color: isIncome ? "#4CAF50" : "#E53935" }]}>
+              {item.accountCategory}
+            </ThemedText>
+          )}
+          {item.client && (
+            <ThemedText style={[styles.transactionClient, { color: theme.textSecondary }]}>
+              {item.client}
+            </ThemedText>
+          )}
           <ThemedText style={[styles.transactionDesc, { color: theme.textSecondary }]}>
             {item.description}
             {item.source === "sales" ? " [自動]" : ""}
@@ -920,6 +935,13 @@ const styles = StyleSheet.create({
   transactionDate: {
     fontSize: 14,
     marginBottom: 2,
+  },
+  transactionCategory: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  transactionClient: {
+    fontSize: 12,
   },
   transactionDesc: {
     fontSize: 12,
