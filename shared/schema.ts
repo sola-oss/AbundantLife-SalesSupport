@@ -33,11 +33,12 @@ export const INCOME_ACCOUNT_CATEGORIES = [
 
 // 勘定科目の選択肢（出金用）
 export const EXPENSE_ACCOUNT_CATEGORIES = [
-  "仕入",
-  "消耗品費",
-  "通信費",
-  "交通費",
-  "その他",
+  "給料",
+  "福利厚生費",
+  "雑費",
+  "旅費交通費",
+  "修繕費",
+  "総勢",
 ] as const;
 
 // Zodスキーマ
