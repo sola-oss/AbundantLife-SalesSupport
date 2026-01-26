@@ -25,6 +25,7 @@ import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollV
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
 import type { CashbookSummary, CashbookTransaction } from "@shared/schema";
+import { INCOME_ACCOUNT_CATEGORIES, EXPENSE_ACCOUNT_CATEGORIES } from "@shared/schema";
 
 type FilterType = "all" | "income" | "expense";
 
@@ -54,6 +55,8 @@ export default function CashbookScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addType, setAddType] = useState<"income" | "expense">("expense");
   const [addDate, setAddDate] = useState(new Date());
+  const [addAccountCategory, setAddAccountCategory] = useState("");
+  const [addClient, setAddClient] = useState("");
   const [addDescription, setAddDescription] = useState("");
   const [addAmount, setAddAmount] = useState("");
   const [showAddDatePicker, setShowAddDatePicker] = useState(false);
@@ -69,6 +72,8 @@ export default function CashbookScreen() {
     mutationFn: async (entryData: {
       date: string;
       type: string;
+      accountCategory?: string;
+      client?: string;
       description: string;
       amount: number;
     }) => {
@@ -100,6 +105,8 @@ export default function CashbookScreen() {
   const resetAddForm = () => {
     setAddType("expense");
     setAddDate(new Date());
+    setAddAccountCategory("");
+    setAddClient("");
     setAddDescription("");
     setAddAmount("");
   };
@@ -118,10 +125,12 @@ export default function CashbookScreen() {
     createEntryMutation.mutate({
       date: addDate.toISOString().split("T")[0],
       type: addType,
+      accountCategory: addAccountCategory || undefined,
+      client: addClient || undefined,
       description: addDescription,
       amount: amountNumber,
     });
-  }, [addDate, addType, addDescription, addAmount, createEntryMutation]);
+  }, [addDate, addType, addAccountCategory, addClient, addDescription, addAmount, createEntryMutation]);
 
   const handleAmountChange = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, "");
@@ -666,17 +675,62 @@ export default function CashbookScreen() {
                 </>
               )}
 
+              <ThemedText style={styles.inputLabel}>勘定科目</ThemedText>
+              <View style={styles.categoryRow}>
+                {(addType === "income" ? INCOME_ACCOUNT_CATEGORIES : EXPENSE_ACCOUNT_CATEGORIES).map((category) => (
+                  <Pressable
+                    key={category}
+                    style={[
+                      styles.categoryButton,
+                      {
+                        backgroundColor:
+                          addAccountCategory === category
+                            ? addType === "income" ? "#E8F5E9" : "#FFEBEE"
+                            : theme.backgroundSecondary,
+                      },
+                    ]}
+                    onPress={() => setAddAccountCategory(category)}
+                  >
+                    <ThemedText
+                      style={{
+                        color:
+                          addAccountCategory === category
+                            ? addType === "income" ? "#4CAF50" : "#E53935"
+                            : theme.text,
+                        fontSize: 14,
+                      }}
+                    >
+                      {category}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+
+              <ThemedText style={styles.inputLabel}>取引先</ThemedText>
               <TextInput
                 style={[
                   styles.textInput,
                   { backgroundColor: theme.backgroundSecondary, color: theme.text },
                 ]}
-                placeholder="説明（例：事務用品購入）"
+                placeholder="取引先（例：○○様）"
+                placeholderTextColor={theme.textSecondary}
+                value={addClient}
+                onChangeText={setAddClient}
+              />
+
+              <ThemedText style={styles.inputLabel}>内容</ThemedText>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: theme.backgroundSecondary, color: theme.text },
+                ]}
+                placeholder="内容（例：事務用品購入）"
                 placeholderTextColor={theme.textSecondary}
                 value={addDescription}
                 onChangeText={setAddDescription}
               />
 
+              <ThemedText style={styles.inputLabel}>金額</ThemedText>
               <View
                 style={[styles.amountInputContainer, { backgroundColor: theme.backgroundSecondary }]}
               >
@@ -970,6 +1024,22 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     fontSize: 16,
     marginBottom: Spacing.md,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: Spacing.xs,
+  },
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  categoryButton: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.sm,
   },
   amountInputContainer: {
     flexDirection: "row",
