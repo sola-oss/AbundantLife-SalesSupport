@@ -16,11 +16,29 @@ export const cashbook = pgTable("cashbook", {
   id: serial("id").primaryKey(),
   date: text("date").notNull(),
   type: text("type").notNull(), // 'income' | 'expense'
+  accountCategory: text("account_category"), // 勘定科目
+  client: text("client"), // 取引先
   description: text("description").notNull(),
   amount: integer("amount").notNull(),
   saleId: integer("sale_id"), // 売上連携時のID（手動入力はnull）
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// 勘定科目の選択肢（入金用）
+export const INCOME_ACCOUNT_CATEGORIES = [
+  "売上",
+  "雑収入",
+  "その他",
+] as const;
+
+// 勘定科目の選択肢（出金用）
+export const EXPENSE_ACCOUNT_CATEGORIES = [
+  "仕入",
+  "消耗品費",
+  "通信費",
+  "交通費",
+  "その他",
+] as const;
 
 // Zodスキーマ
 export const insertSaleSchema = createInsertSchema(sales).omit({
@@ -57,6 +75,8 @@ export interface CashbookTransaction {
   id: number;
   date: string;
   type: 'income' | 'expense';
+  accountCategory?: string;
+  client?: string;
   description: string;
   amount: number;
   balance: number;
