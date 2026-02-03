@@ -1,18 +1,23 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { Platform } from "react-native";
 
 /**
  * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  // On web, use relative URLs (same origin) for the static build
-  if (Platform.OS === "web") {
-    // Check if we're in a browser with a proper origin
-    if (typeof window !== "undefined" && window.location?.origin) {
-      return window.location.origin;
+  // Check if we're in a browser
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    
+    // On Replit, API is on port 5000, web app might be on different port
+    // Use port 5000 explicitly for replit.dev domains
+    if (hostname.includes("replit.dev") || hostname.includes("replit.app")) {
+      return `${protocol}//${hostname}:5000`;
     }
-    return "";
+    
+    // For localhost or other environments, use same origin
+    return window.location.origin;
   }
 
   // For native apps, use the environment variable
