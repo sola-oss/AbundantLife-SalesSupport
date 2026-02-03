@@ -1,10 +1,21 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { Platform } from "react-native";
 
 /**
  * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
+  // On web, use relative URLs (same origin) for the static build
+  if (Platform.OS === "web") {
+    // Check if we're in a browser with a proper origin
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return window.location.origin;
+    }
+    return "";
+  }
+
+  // For native apps, use the environment variable
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
