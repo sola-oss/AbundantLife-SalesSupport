@@ -9,14 +9,19 @@ export function getApiUrl(): string {
   if (typeof window !== "undefined" && window.location?.hostname) {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
+    const port = window.location.port;
     
-    // On Replit, API is on port 5000, web app might be on different port
-    // Use port 5000 explicitly for replit.dev domains
-    if (hostname.includes("replit.dev") || hostname.includes("replit.app")) {
-      return `${protocol}//${hostname}:5000`;
+    // Development on Replit: Metro serves on port 80/8081, Express API on port 5000
+    // Need to explicitly use port 5000 for API calls
+    if (hostname.includes("replit.dev")) {
+      // Only add port 5000 if we're not already on port 5000
+      if (port !== "5000") {
+        return `${protocol}//${hostname}:5000`;
+      }
     }
     
-    // For localhost or other environments, use same origin
+    // Production (replit.app) or same-port access: use same origin
+    // Express serves both static files and API on the same port
     return window.location.origin;
   }
 
