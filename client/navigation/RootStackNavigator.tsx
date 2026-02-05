@@ -2,7 +2,6 @@ import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import SalesScreen from "@/screens/SalesScreen";
-import ReportsScreen from "@/screens/ReportsScreen";
 import CashbookScreen from "@/screens/CashbookScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { HeaderTitle } from "@/components/HeaderTitle";
@@ -11,7 +10,6 @@ import { Colors } from "@/constants/theme";
 export type RootTabParamList = {
   Sales: undefined;
   Cashbook: undefined;
-  Reports: undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -51,17 +49,6 @@ export default function RootStackNavigator() {
           tabBarLabel: "出納帳",
           tabBarIcon: ({ color, size }) => (
             <Feather name="book-open" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Reports"
-        component={ReportsScreen}
-        options={{
-          headerTitle: () => <HeaderTitle title="レポート" />,
-          tabBarLabel: "レポート",
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="bar-chart-2" size={size} color={color} />
           ),
         }}
       />
