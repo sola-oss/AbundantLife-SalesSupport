@@ -564,16 +564,22 @@ export default function CashbookScreen() {
           {isManual ? (
             <View style={styles.actionRow}>
               <Pressable
-                style={[styles.actionButton, { backgroundColor: "#E3F2FD" }]}
                 onPress={() => handleEdit(item)}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  pressed && { opacity: 0.6 },
+                ]}
               >
-                <Feather name="edit-2" size={14} color="#1976D2" />
+                <Feather name="edit-2" size={18} color={theme.warmBrown} />
               </Pressable>
               <Pressable
-                style={[styles.actionButton, { backgroundColor: "#FFEBEE" }]}
                 onPress={() => handleDelete(item)}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  pressed && { opacity: 0.6 },
+                ]}
               >
-                <Feather name="trash-2" size={14} color="#E53935" />
+                <Feather name="trash-2" size={18} color="#CC6666" />
               </Pressable>
             </View>
           ) : null}
@@ -1195,16 +1201,12 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: "row",
-    gap: Spacing.xs,
+    gap: Spacing.md,
     marginTop: Spacing.xs,
     justifyContent: "flex-end",
   },
-  actionButton: {
-    width: 30,
-    height: 30,
-    borderRadius: BorderRadius.sm,
-    alignItems: "center",
-    justifyContent: "center",
+  iconButton: {
+    padding: Spacing.xs,
   },
   hint: {
     fontSize: 12,
