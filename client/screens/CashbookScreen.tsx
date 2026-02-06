@@ -25,7 +25,7 @@ import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollV
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
 import type { CashbookSummary, CashbookTransaction } from "@shared/schema";
-import { INCOME_ACCOUNT_CATEGORIES, EXPENSE_ACCOUNT_CATEGORIES } from "@shared/schema";
+import { INCOME_ACCOUNT_CATEGORIES, EXPENSE_ACCOUNT_CATEGORIES, PAYMENT_METHODS } from "@shared/schema";
 
 type FilterType = "all" | "income" | "expense";
 
@@ -57,6 +57,7 @@ export default function CashbookScreen() {
   const [addDate, setAddDate] = useState(new Date());
   const [addAccountCategory, setAddAccountCategory] = useState("");
   const [addClient, setAddClient] = useState("");
+  const [addPaymentMethod, setAddPaymentMethod] = useState("");
   const [addDescription, setAddDescription] = useState("");
   const [addAmount, setAddAmount] = useState("");
   const [showAddDatePicker, setShowAddDatePicker] = useState(false);
@@ -74,6 +75,7 @@ export default function CashbookScreen() {
       type: string;
       accountCategory?: string;
       client?: string;
+      paymentMethod?: string;
       description: string;
       amount: number;
     }) => {
@@ -107,6 +109,7 @@ export default function CashbookScreen() {
     setAddDate(new Date());
     setAddAccountCategory("");
     setAddClient("");
+    setAddPaymentMethod("");
     setAddDescription("");
     setAddAmount("");
   };
@@ -127,10 +130,11 @@ export default function CashbookScreen() {
       type: addType,
       accountCategory: addAccountCategory || undefined,
       client: addClient || undefined,
+      paymentMethod: addType === "expense" && addPaymentMethod ? addPaymentMethod : undefined,
       description: addDescription,
       amount: amountNumber,
     });
-  }, [addDate, addType, addAccountCategory, addClient, addDescription, addAmount, createEntryMutation]);
+  }, [addDate, addType, addAccountCategory, addClient, addPaymentMethod, addDescription, addAmount, createEntryMutation]);
 
   const handleAmountChange = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, "");
@@ -188,16 +192,17 @@ export default function CashbookScreen() {
   const generateCSV = useCallback(() => {
     if (!data?.transactions || data.transactions.length === 0) return "";
     
-    const header = "日付,勘定科目,取引先,内容,入金,出金,残高\n";
+    const header = "日付,勘定科目,取引先,決済方法,内容,入金,出金,残高\n";
     const rows = data.transactions.map((tx) => {
       const date = tx.date;
       const accountCategory = (tx.accountCategory || "").replace(/,/g, "，");
       const client = (tx.client || "").replace(/,/g, "，");
+      const paymentMethod = (tx.paymentMethod || "").replace(/,/g, "，");
       const description = tx.description.replace(/,/g, "，");
       const income = tx.type === "income" ? tx.amount : "";
       const expense = tx.type === "expense" ? tx.amount : "";
       const balance = tx.balance;
-      return `${date},${accountCategory},${client},${description},${income},${expense},${balance}`;
+      return `${date},${accountCategory},${client},${paymentMethod},${description},${income},${expense},${balance}`;
     }).join("\n");
     
     const summary = `\n\n合計,,,入金合計,${data.totalIncome},,\n,,,出金合計,,${data.totalExpense},\n,,,残高,,,,${data.balance}`;
@@ -270,6 +275,7 @@ export default function CashbookScreen() {
           <td>${tx.date}</td>
           <td>${tx.accountCategory || ""}</td>
           <td>${tx.client || ""}</td>
+          <td>${tx.paymentMethod || ""}</td>
           <td>${tx.description}</td>
           <td style="color: #4CAF50; text-align: right;">${isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
           <td style="color: #E53935; text-align: right;">${!isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
@@ -320,6 +326,7 @@ export default function CashbookScreen() {
                 <th>日付</th>
                 <th>勘定科目</th>
                 <th>取引先</th>
+                <th>決済方法</th>
                 <th>内容</th>
                 <th>入金</th>
                 <th>出金</th>
@@ -369,6 +376,11 @@ export default function CashbookScreen() {
           {item.client && (
             <ThemedText style={[styles.transactionClient, { color: theme.textSecondary }]}>
               {item.client}
+            </ThemedText>
+          )}
+          {item.paymentMethod && (
+            <ThemedText style={[styles.transactionClient, { color: theme.textSecondary }]}>
+              {item.paymentMethod}
             </ThemedText>
           )}
           <ThemedText style={[styles.transactionDesc, { color: theme.textSecondary }]}>
@@ -732,6 +744,41 @@ export default function CashbookScreen() {
                 value={addClient}
                 onChangeText={setAddClient}
               />
+
+              {addType === "expense" ? (
+                <>
+                  <ThemedText style={styles.inputLabel}>決済方法</ThemedText>
+                  <View style={styles.categoryRow}>
+                    {PAYMENT_METHODS.map((method) => (
+                      <Pressable
+                        key={method}
+                        style={[
+                          styles.categoryButton,
+                          {
+                            backgroundColor:
+                              addPaymentMethod === method
+                                ? "#FFEBEE"
+                                : theme.backgroundSecondary,
+                          },
+                        ]}
+                        onPress={() => setAddPaymentMethod(method)}
+                      >
+                        <ThemedText
+                          style={{
+                            color:
+                              addPaymentMethod === method
+                                ? "#E53935"
+                                : theme.text,
+                            fontSize: 14,
+                          }}
+                        >
+                          {method}
+                        </ThemedText>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              ) : null}
 
               <ThemedText style={styles.inputLabel}>内容</ThemedText>
               <TextInput

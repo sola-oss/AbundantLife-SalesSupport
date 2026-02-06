@@ -20,6 +20,7 @@ export const cashbook = pgTable("cashbook", {
   client: text("client"), // 取引先
   description: text("description").notNull(),
   amount: integer("amount").notNull(),
+  paymentMethod: text("payment_method"),
   saleId: integer("sale_id"), // 売上連携時のID（手動入力はnull）
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -40,6 +41,12 @@ export const EXPENSE_ACCOUNT_CATEGORIES = [
   "旅費交通費",
   "交際費",
   "租税公課",
+] as const;
+
+// 決済方法の選択肢
+export const PAYMENT_METHODS = [
+  "現金",
+  "PayPay",
 ] as const;
 
 // Zodスキーマ
@@ -81,6 +88,7 @@ export interface CashbookTransaction {
   client?: string;
   description: string;
   amount: number;
+  paymentMethod?: string;
   balance: number;
   source: 'manual' | 'sales';
   manualId?: number;

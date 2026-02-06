@@ -189,6 +189,7 @@ export class DatabaseStorage implements IStorage {
         client: entry.client || undefined,
         description: entry.description,
         amount: entry.amount,
+        paymentMethod: entry.paymentMethod || undefined,
         balance: 0,
         source: 'manual',
         manualId: entry.id,
