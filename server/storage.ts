@@ -208,9 +208,10 @@ export class DatabaseStorage implements IStorage {
       return a.createdAt.localeCompare(b.createdAt);
     });
 
-    // 決済方法別残高を計算
-    let balance = 0;
-    let cashBalance = 0;
+    // 決済方法別残高を計算（現金初期残高: 137,751円）
+    const CASH_INITIAL_BALANCE = 137751;
+    let balance = CASH_INITIAL_BALANCE;
+    let cashBalance = CASH_INITIAL_BALANCE;
     let paypayBalance = 0;
     let totalIncome = 0;
     let totalExpense = 0;
