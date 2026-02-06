@@ -189,30 +189,54 @@ export default function CashbookScreen() {
     setShowAddModal(true);
   };
 
-  const generateCSV = useCallback(() => {
+  const generateCSVForMethod = useCallback((method: "現金" | "PayPay") => {
     if (!data?.transactions || data.transactions.length === 0) return "";
-    
-    const header = "日付,勘定科目,取引先,決済方法,内容,入金,出金,残高\n";
-    const rows = data.transactions.map((tx) => {
+
+    const isCash = method === "現金";
+    const filtered = data.transactions.filter((tx) => {
+      if (tx.type === "income") return isCash;
+      return isCash ? tx.paymentMethod !== "PayPay" : tx.paymentMethod === "PayPay";
+    });
+    if (filtered.length === 0) return "";
+
+    const header = "日付,勘定科目,取引先,内容,入金,出金,残高\n";
+    const rows = filtered.map((tx) => {
       const date = tx.date;
       const accountCategory = (tx.accountCategory || "").replace(/,/g, "，");
       const client = (tx.client || "").replace(/,/g, "，");
-      const paymentMethod = (tx.paymentMethod || "").replace(/,/g, "，");
       const description = tx.description.replace(/,/g, "，");
       const income = tx.type === "income" ? tx.amount : "";
       const expense = tx.type === "expense" ? tx.amount : "";
-      const balance = tx.balance;
-      return `${date},${accountCategory},${client},${paymentMethod},${description},${income},${expense},${balance}`;
+      const balance = isCash ? tx.cashBalance : tx.paypayBalance;
+      return `${date},${accountCategory},${client},${description},${income},${expense},${balance}`;
     }).join("\n");
-    
-    const summary = `\n\n合計,,,入金合計,${data.totalIncome},,\n,,,出金合計,,${data.totalExpense},\n,,,残高,,,,${data.balance}`;
-    
+
+    const totalIncome = isCash ? data.totalIncome : 0;
+    const totalExpense = isCash ? data.cashExpense : data.paypayExpense;
+    const finalBalance = isCash ? data.cashBalance : data.paypayBalance;
+    const summary = `\n\n合計,,入金合計,${totalIncome},,\n,,出金合計,,${totalExpense},\n,,残高,,,${finalBalance}`;
+
     return header + rows + summary;
   }, [data]);
 
+  const downloadCSVWeb = useCallback((csvContent: string, filename: string) => {
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, []);
+
   const handleExportCSV = useCallback(async () => {
-    const csvContent = generateCSV();
-    if (!csvContent) {
+    const cashCSV = generateCSVForMethod("現金");
+    const paypayCSV = generateCSVForMethod("PayPay");
+
+    if (!cashCSV && !paypayCSV) {
       if (Platform.OS === "web") {
         window.alert("エクスポートするデータがありません");
       } else {
@@ -221,75 +245,89 @@ export default function CashbookScreen() {
       return;
     }
 
-    const filename = `現金出納帳_${selectedYear}年${selectedMonth}月.csv`;
-
     if (Platform.OS === "web") {
-      const BOM = "\uFEFF";
-      const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setSuccessMessage("CSVをダウンロードしました");
+      if (cashCSV) {
+        downloadCSVWeb(cashCSV, `現金出納帳_現金_${selectedYear}年${selectedMonth}月.csv`);
+      }
+      if (paypayCSV) {
+        setTimeout(() => {
+          downloadCSVWeb(paypayCSV, `現金出納帳_PayPay_${selectedYear}年${selectedMonth}月.csv`);
+        }, 500);
+      }
+      const methods = [cashCSV ? "現金" : "", paypayCSV ? "PayPay" : ""].filter(Boolean).join("・");
+      setSuccessMessage(`${methods}のCSVをダウンロードしました`);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 2000);
     } else {
       try {
-        const file = new File(Paths.cache, filename);
-        await file.create();
-        await file.write(csvContent);
-        
+        const files: string[] = [];
+        if (cashCSV) {
+          const cashFile = new File(Paths.cache, `現金出納帳_現金_${selectedYear}年${selectedMonth}月.csv`);
+          await cashFile.create();
+          await cashFile.write(cashCSV);
+          files.push(cashFile.uri);
+        }
+        if (paypayCSV) {
+          const paypayFile = new File(Paths.cache, `現金出納帳_PayPay_${selectedYear}年${selectedMonth}月.csv`);
+          await paypayFile.create();
+          await paypayFile.write(paypayCSV);
+          files.push(paypayFile.uri);
+        }
+
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
-          await Sharing.shareAsync(file.uri, {
-            mimeType: "text/csv",
-            dialogTitle: "現金出納帳をエクスポート",
-          });
+          for (const uri of files) {
+            await Sharing.shareAsync(uri, {
+              mimeType: "text/csv",
+              dialogTitle: "出納帳をエクスポート",
+            });
+          }
         } else {
-          Alert.alert("完了", `ファイルを保存しました: ${filename}`);
+          Alert.alert("完了", `ファイルを保存しました`);
         }
       } catch (error) {
         Alert.alert("エラー", "エクスポートに失敗しました");
       }
     }
-  }, [generateCSV, selectedYear, selectedMonth]);
+  }, [generateCSVForMethod, downloadCSVWeb, selectedYear, selectedMonth]);
 
-  const handlePrint = useCallback(async () => {
-    if (!data?.transactions || data.transactions.length === 0) {
-      if (Platform.OS === "web") {
-        window.alert("印刷するデータがありません");
-      } else {
-        Alert.alert("注意", "印刷するデータがありません");
-      }
-      return;
-    }
+  const generatePrintHTML = useCallback((method: "現金" | "PayPay") => {
+    if (!data?.transactions || data.transactions.length === 0) return "";
 
-    const tableRows = data.transactions.map((tx) => {
+    const isCash = method === "現金";
+    const filtered = data.transactions.filter((tx) => {
+      if (tx.type === "income") return isCash;
+      return isCash ? tx.paymentMethod !== "PayPay" : tx.paymentMethod === "PayPay";
+    });
+    if (filtered.length === 0) return "";
+
+    const tableRows = filtered.map((tx) => {
       const isIncome = tx.type === "income";
+      const balance = isCash ? tx.cashBalance : tx.paypayBalance;
       return `
         <tr>
           <td>${tx.date}</td>
           <td>${tx.accountCategory || ""}</td>
           <td>${tx.client || ""}</td>
-          <td>${tx.paymentMethod || ""}</td>
           <td>${tx.description}</td>
           <td style="color: #4CAF50; text-align: right;">${isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
           <td style="color: #E53935; text-align: right;">${!isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
-          <td style="text-align: right;">¥${formatAmount(tx.balance)}</td>
+          <td style="text-align: right;">¥${formatAmount(balance)}</td>
         </tr>
       `;
     }).join("");
 
-    const html = `
+    const totalIncome = isCash ? data.totalIncome : 0;
+    const totalExpense = isCash ? data.cashExpense : data.paypayExpense;
+    const finalBalance = isCash ? data.cashBalance : data.paypayBalance;
+    const title = isCash ? "現金出納帳" : "PayPay出納帳";
+
+    return `
       <!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8">
-          <title>現金出納帳 ${selectedYear}年${selectedMonth}月</title>
+          <title>${title} ${selectedYear}年${selectedMonth}月</title>
           <style>
             body { font-family: sans-serif; padding: 20px; }
             h1 { text-align: center; font-size: 24px; margin-bottom: 20px; }
@@ -305,19 +343,19 @@ export default function CashbookScreen() {
           </style>
         </head>
         <body>
-          <h1>現金出納帳 ${selectedYear}年${selectedMonth}月</h1>
+          <h1>${title} ${selectedYear}年${selectedMonth}月</h1>
           <div class="summary">
             <div class="summary-item">
               <div class="summary-label">入金合計</div>
-              <div class="summary-value income">¥${formatAmount(data.totalIncome)}</div>
+              <div class="summary-value income">¥${formatAmount(totalIncome)}</div>
             </div>
             <div class="summary-item">
               <div class="summary-label">出金合計</div>
-              <div class="summary-value expense">¥${formatAmount(data.totalExpense)}</div>
+              <div class="summary-value expense">¥${formatAmount(totalExpense)}</div>
             </div>
             <div class="summary-item">
               <div class="summary-label">残高</div>
-              <div class="summary-value">¥${formatAmount(data.balance)}</div>
+              <div class="summary-value">¥${formatAmount(finalBalance)}</div>
             </div>
           </div>
           <table>
@@ -326,7 +364,6 @@ export default function CashbookScreen() {
                 <th>日付</th>
                 <th>勘定科目</th>
                 <th>取引先</th>
-                <th>決済方法</th>
                 <th>内容</th>
                 <th>入金</th>
                 <th>出金</th>
@@ -340,22 +377,86 @@ export default function CashbookScreen() {
         </body>
       </html>
     `;
+  }, [data, selectedYear, selectedMonth]);
+
+  const handlePrint = useCallback(async () => {
+    if (!data?.transactions || data.transactions.length === 0) {
+      if (Platform.OS === "web") {
+        window.alert("印刷するデータがありません");
+      } else {
+        Alert.alert("注意", "印刷するデータがありません");
+      }
+      return;
+    }
+
+    const cashHTML = generatePrintHTML("現金");
+    const paypayHTML = generatePrintHTML("PayPay");
+
+    if (!cashHTML && !paypayHTML) {
+      if (Platform.OS === "web") {
+        window.alert("印刷するデータがありません");
+      } else {
+        Alert.alert("注意", "印刷するデータがありません");
+      }
+      return;
+    }
+
+    const combinedHTML = [cashHTML, paypayHTML].filter(Boolean).join('<div style="page-break-before: always;"></div>');
+    const wrappedHTML = combinedHTML.replace(/<\/html>\s*<!DOCTYPE html>\s*<html>\s*<head>[\s\S]*?<\/head>\s*<body>/g, '<div style="page-break-before: always;">') .replace(/<\/body>\s*<\/html>\s*<div style="page-break-before: always;">/g, '<div style="page-break-before: always;">');
 
     if (Platform.OS === "web") {
       const printWindow = window.open("", "_blank");
       if (printWindow) {
-        printWindow.document.write(html);
+        if (cashHTML) {
+          printWindow.document.write(cashHTML);
+        }
+        if (paypayHTML) {
+          if (cashHTML) {
+            printWindow.document.write('<div style="page-break-before: always;"></div>');
+            const bodyContent = paypayHTML.match(/<body>([\s\S]*)<\/body>/);
+            if (bodyContent) {
+              printWindow.document.write(bodyContent[1]);
+            }
+          } else {
+            printWindow.document.write(paypayHTML);
+          }
+        }
         printWindow.document.close();
         printWindow.print();
       }
     } else {
       try {
-        await Print.printAsync({ html });
+        const fullHTML = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <style>
+                body { font-family: sans-serif; padding: 20px; }
+                h1 { text-align: center; font-size: 24px; margin-bottom: 20px; }
+                .summary { display: flex; justify-content: space-around; margin-bottom: 20px; }
+                .summary-item { text-align: center; }
+                .summary-label { font-size: 14px; color: #666; }
+                .summary-value { font-size: 20px; font-weight: bold; }
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #ddd; padding: 8px; }
+                th { background-color: #f5f5f5; }
+                .income { color: #4CAF50; }
+                .expense { color: #E53935; }
+              </style>
+            </head>
+            <body>
+              ${cashHTML ? cashHTML.match(/<body>([\s\S]*)<\/body>/)?.[1] || "" : ""}
+              ${paypayHTML ? '<div style="page-break-before: always;"></div>' + (paypayHTML.match(/<body>([\s\S]*)<\/body>/)?.[1] || "") : ""}
+            </body>
+          </html>
+        `;
+        await Print.printAsync({ html: fullHTML });
       } catch (error) {
         Alert.alert("エラー", "印刷に失敗しました");
       }
     }
-  }, [data, selectedYear, selectedMonth]);
+  }, [data, generatePrintHTML]);
 
   const renderTransaction = ({ item }: { item: CashbookTransaction }) => {
     const isIncome = item.type === "income";
@@ -398,7 +499,9 @@ export default function CashbookScreen() {
             {isIncome ? "+" : "-"}¥{formatAmount(item.amount)}
           </ThemedText>
           <ThemedText style={[styles.transactionBalance, { color: theme.textSecondary }]}>
-            残高: ¥{formatAmount(item.balance)}
+            {item.type === 'expense' && item.paymentMethod === 'PayPay'
+              ? `PayPay: ¥${formatAmount(item.paypayBalance)}`
+              : `現金: ¥${formatAmount(item.cashBalance)}`}
           </ThemedText>
         </View>
       </Pressable>
@@ -471,11 +574,20 @@ export default function CashbookScreen() {
           </View>
         </View>
 
-        <View style={[styles.balanceCard, { backgroundColor: theme.backgroundSecondary }]}>
-          <ThemedText style={styles.balanceLabel}>残高</ThemedText>
-          <ThemedText style={styles.balanceAmount}>
-            ¥{formatAmount(data?.balance || 0)}
-          </ThemedText>
+        <View style={styles.summaryRow}>
+          <View style={[styles.balanceCard, { backgroundColor: theme.backgroundSecondary, flex: 1 }]}>
+            <ThemedText style={styles.balanceLabel}>現金残高</ThemedText>
+            <ThemedText style={styles.balanceAmount}>
+              ¥{formatAmount(data?.cashBalance || 0)}
+            </ThemedText>
+          </View>
+          <View style={{ width: Spacing.sm }} />
+          <View style={[styles.balanceCard, { backgroundColor: theme.backgroundSecondary, flex: 1 }]}>
+            <ThemedText style={styles.balanceLabel}>PayPay残高</ThemedText>
+            <ThemedText style={styles.balanceAmount}>
+              ¥{formatAmount(data?.paypayBalance || 0)}
+            </ThemedText>
+          </View>
         </View>
 
         <View style={styles.filterRow}>
