@@ -163,7 +163,7 @@ export class DatabaseStorage implements IStorage {
     const transactions: CashbookTransaction[] = [];
     let idCounter = 1;
 
-    // 売上を入金として追加
+    // 売上を入金として追加（現金扱い）
     for (const sale of salesData) {
       transactions.push({
         id: idCounter++,
@@ -173,6 +173,8 @@ export class DatabaseStorage implements IStorage {
         description: `売上（${sale.course}）`,
         amount: sale.amount,
         balance: 0,
+        cashBalance: 0,
+        paypayBalance: 0,
         source: 'sales',
         saleId: sale.id,
         createdAt: sale.createdAt.toISOString(),
@@ -191,6 +193,8 @@ export class DatabaseStorage implements IStorage {
         amount: entry.amount,
         paymentMethod: entry.paymentMethod || undefined,
         balance: 0,
+        cashBalance: 0,
+        paypayBalance: 0,
         source: 'manual',
         manualId: entry.id,
         createdAt: entry.createdAt.toISOString(),
@@ -204,20 +208,34 @@ export class DatabaseStorage implements IStorage {
       return a.createdAt.localeCompare(b.createdAt);
     });
 
-    // 残高を計算
+    // 決済方法別残高を計算
     let balance = 0;
+    let cashBalance = 0;
+    let paypayBalance = 0;
     let totalIncome = 0;
     let totalExpense = 0;
+    let cashExpense = 0;
+    let paypayExpense = 0;
 
     for (const tx of transactions) {
       if (tx.type === 'income') {
+        cashBalance += tx.amount;
         balance += tx.amount;
         totalIncome += tx.amount;
       } else {
+        if (tx.paymentMethod === 'PayPay') {
+          paypayBalance -= tx.amount;
+          paypayExpense += tx.amount;
+        } else {
+          cashBalance -= tx.amount;
+          cashExpense += tx.amount;
+        }
         balance -= tx.amount;
         totalExpense += tx.amount;
       }
       tx.balance = balance;
+      tx.cashBalance = cashBalance;
+      tx.paypayBalance = paypayBalance;
     }
 
     return {
@@ -225,6 +243,10 @@ export class DatabaseStorage implements IStorage {
       totalIncome,
       totalExpense,
       balance,
+      cashBalance,
+      paypayBalance,
+      cashExpense,
+      paypayExpense,
     };
   }
 }

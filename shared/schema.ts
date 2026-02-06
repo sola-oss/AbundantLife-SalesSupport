@@ -90,6 +90,8 @@ export interface CashbookTransaction {
   amount: number;
   paymentMethod?: string;
   balance: number;
+  cashBalance: number;
+  paypayBalance: number;
   source: 'manual' | 'sales';
   manualId?: number;
   saleId?: number;
@@ -102,6 +104,10 @@ export interface CashbookSummary {
   totalIncome: number;
   totalExpense: number;
   balance: number;
+  cashBalance: number;
+  paypayBalance: number;
+  cashExpense: number;
+  paypayExpense: number;
 }
 
 // コース名の選択肢
