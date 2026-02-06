@@ -53,6 +53,7 @@ export default function CashbookScreen() {
   const [filterType, setFilterType] = useState<FilterType>("all");
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<CashbookTransaction | null>(null);
   const [addType, setAddType] = useState<"income" | "expense">("expense");
   const [addDate, setAddDate] = useState(new Date());
   const [addAccountCategory, setAddAccountCategory] = useState("");
@@ -92,6 +93,33 @@ export default function CashbookScreen() {
     },
   });
 
+  const updateEntryMutation = useMutation({
+    mutationFn: async ({ id, data: entryData }: {
+      id: number;
+      data: {
+        date: string;
+        type: string;
+        accountCategory?: string;
+        client?: string;
+        paymentMethod?: string;
+        description: string;
+        amount: number;
+      };
+    }) => {
+      const res = await apiRequest("PUT", `/api/cashbook/${id}`, entryData);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/cashbook/${selectedYear}/${selectedMonth}`] });
+      setShowAddModal(false);
+      setEditingEntry(null);
+      resetAddForm();
+      setSuccessMessage("更新しました");
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    },
+  });
+
   const deleteEntryMutation = useMutation({
     mutationFn: async (manualId: number) => {
       await apiRequest("DELETE", `/api/cashbook/${manualId}`);
@@ -125,7 +153,7 @@ export default function CashbookScreen() {
     const amountNumber = parseInt(addAmount.replace(/,/g, ""), 10);
     if (isNaN(amountNumber) || amountNumber <= 0) return;
 
-    createEntryMutation.mutate({
+    const entryData = {
       date: addDate.toISOString().split("T")[0],
       type: addType,
       accountCategory: addAccountCategory || undefined,
@@ -133,8 +161,14 @@ export default function CashbookScreen() {
       paymentMethod: addType === "expense" && addPaymentMethod ? addPaymentMethod : undefined,
       description: addDescription,
       amount: amountNumber,
-    });
-  }, [addDate, addType, addAccountCategory, addClient, addPaymentMethod, addDescription, addAmount, createEntryMutation]);
+    };
+
+    if (editingEntry && editingEntry.manualId) {
+      updateEntryMutation.mutate({ id: editingEntry.manualId, data: entryData });
+    } else {
+      createEntryMutation.mutate(entryData);
+    }
+  }, [addDate, addType, addAccountCategory, addClient, addPaymentMethod, addDescription, addAmount, editingEntry, createEntryMutation, updateEntryMutation]);
 
   const handleAmountChange = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, "");
@@ -184,8 +218,32 @@ export default function CashbookScreen() {
   };
 
   const openAddModal = (type: "income" | "expense") => {
+    setEditingEntry(null);
+    resetAddForm();
     setAddType(type);
     setAddDate(new Date());
+    setShowAddModal(true);
+  };
+
+  const handleEdit = (tx: CashbookTransaction) => {
+    if (tx.source === "sales") {
+      if (Platform.OS === "web") {
+        window.alert("売上データは売上入力画面から編集してください");
+      } else {
+        Alert.alert("注意", "売上データは売上入力画面から編集してください");
+      }
+      return;
+    }
+    if (!tx.manualId) return;
+
+    setEditingEntry(tx);
+    setAddType(tx.type as "income" | "expense");
+    setAddDate(new Date(tx.date + "T00:00:00"));
+    setAddAccountCategory(tx.accountCategory || "");
+    setAddClient(tx.client || "");
+    setAddPaymentMethod(tx.paymentMethod || "");
+    setAddDescription(tx.description);
+    setAddAmount(tx.amount.toLocaleString("ja-JP"));
     setShowAddModal(true);
   };
 
@@ -460,30 +518,30 @@ export default function CashbookScreen() {
 
   const renderTransaction = ({ item }: { item: CashbookTransaction }) => {
     const isIncome = item.type === "income";
+    const isManual = item.source !== "sales" && !!item.manualId;
     return (
-      <Pressable
+      <View
         style={[styles.transactionItem, { borderBottomColor: theme.border }]}
-        onLongPress={() => handleDelete(item)}
       >
         <View style={styles.transactionLeft}>
           <ThemedText style={styles.transactionDate}>
             {formatDateJapanese(item.date)}
           </ThemedText>
-          {item.accountCategory && (
+          {item.accountCategory ? (
             <ThemedText style={[styles.transactionCategory, { color: isIncome ? "#4CAF50" : "#E53935" }]}>
               {item.accountCategory}
             </ThemedText>
-          )}
-          {item.client && (
+          ) : null}
+          {item.client ? (
             <ThemedText style={[styles.transactionClient, { color: theme.textSecondary }]}>
               {item.client}
             </ThemedText>
-          )}
-          {item.paymentMethod && (
+          ) : null}
+          {item.paymentMethod ? (
             <ThemedText style={[styles.transactionClient, { color: theme.textSecondary }]}>
               {item.paymentMethod}
             </ThemedText>
-          )}
+          ) : null}
           <ThemedText style={[styles.transactionDesc, { color: theme.textSecondary }]}>
             {item.description}
             {item.source === "sales" ? " [自動]" : ""}
@@ -503,8 +561,24 @@ export default function CashbookScreen() {
               ? `PayPay: ¥${formatAmount(item.paypayBalance)}`
               : `現金: ¥${formatAmount(item.cashBalance)}`}
           </ThemedText>
+          {isManual ? (
+            <View style={styles.actionRow}>
+              <Pressable
+                style={[styles.actionButton, { backgroundColor: "#E3F2FD" }]}
+                onPress={() => handleEdit(item)}
+              >
+                <Feather name="edit-2" size={14} color="#1976D2" />
+              </Pressable>
+              <Pressable
+                style={[styles.actionButton, { backgroundColor: "#FFEBEE" }]}
+                onPress={() => handleDelete(item)}
+              >
+                <Feather name="trash-2" size={14} color="#E53935" />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
-      </Pressable>
+      </View>
     );
   };
 
@@ -657,7 +731,7 @@ export default function CashbookScreen() {
         </View>
 
         <ThemedText style={[styles.hint, { color: theme.textSecondary }]}>
-          売上データは自動で入金として反映されます。手動エントリは長押しで削除できます。
+          売上データは自動で入金として反映されます。
         </ThemedText>
       </ScrollView>
 
@@ -730,19 +804,21 @@ export default function CashbookScreen() {
         visible={showAddModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => { setShowAddModal(false); setEditingEntry(null); }}
       >
         <View style={styles.modalOverlay}>
           <Pressable
             style={styles.modalBackdrop}
-            onPress={() => setShowAddModal(false)}
+            onPress={() => { setShowAddModal(false); setEditingEntry(null); }}
           />
           <KeyboardAwareScrollViewCompat>
             <View
               style={[styles.addModal, { backgroundColor: theme.backgroundDefault }]}
             >
               <ThemedText style={styles.addModalTitle}>
-                {addType === "income" ? "入金を追加" : "出金を追加"}
+                {editingEntry
+                  ? "取引を編集"
+                  : addType === "income" ? "入金を追加" : "出金を追加"}
               </ThemedText>
 
               <View style={styles.typeToggle}>
@@ -928,7 +1004,7 @@ export default function CashbookScreen() {
                   },
                 ]}
                 onPress={handleAddSubmit}
-                disabled={!addDescription || !addAmount || createEntryMutation.isPending}
+                disabled={!addDescription || !addAmount || createEntryMutation.isPending || updateEntryMutation.isPending}
               >
                 <ThemedText
                   style={[
@@ -936,11 +1012,13 @@ export default function CashbookScreen() {
                     { color: addDescription && addAmount ? theme.warmBrown : theme.textSecondary },
                   ]}
                 >
-                  {createEntryMutation.isPending ? "登録中..." : "登録"}
+                  {(createEntryMutation.isPending || updateEntryMutation.isPending)
+                    ? (editingEntry ? "更新中..." : "登録中...")
+                    : (editingEntry ? "更新" : "登録")}
                 </ThemedText>
               </Pressable>
 
-              <Pressable style={styles.cancelButton} onPress={() => setShowAddModal(false)}>
+              <Pressable style={styles.cancelButton} onPress={() => { setShowAddModal(false); setEditingEntry(null); }}>
                 <ThemedText style={[styles.cancelButtonText, { color: theme.textSecondary }]}>
                   キャンセル
                 </ThemedText>
@@ -1114,6 +1192,19 @@ const styles = StyleSheet.create({
   },
   transactionBalance: {
     fontSize: 12,
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+    justifyContent: "flex-end",
+  },
+  actionButton: {
+    width: 30,
+    height: 30,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+    justifyContent: "center",
   },
   hint: {
     fontSize: 12,
