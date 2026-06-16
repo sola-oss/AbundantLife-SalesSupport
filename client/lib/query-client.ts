@@ -1,40 +1,30 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-/**
- * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
- * @returns {string} The API base URL
- */
 export function getApiUrl(): string {
-  // Check if we're in a browser
   if (typeof window !== "undefined" && window.location?.hostname) {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     const port = window.location.port;
-    
-    // Development on Replit: Metro serves on port 80/8081, Express API on port 5000
-    // Need to explicitly use port 5000 for API calls
-    if (hostname.includes("replit.dev")) {
-      // Only add port 5000 if we're not already on port 5000
+
+    // Local dev: Expo web runs on 8081/19006, API on 5000
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
       if (port !== "5000") {
         return `${protocol}//${hostname}:5000`;
       }
     }
-    
-    // Production (replit.app) or same-port access: use same origin
-    // Express serves both static files and API on the same port
+
+    // Production: Express serves both static files and API on the same port
     return window.location.origin;
   }
 
   // For native apps, use the environment variable
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
+  const host = process.env.EXPO_PUBLIC_API_URL;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+    throw new Error("EXPO_PUBLIC_API_URL is not set");
   }
 
-  let url = new URL(`https://${host}`);
-
-  return url.href;
+  return host;
 }
 
 async function throwIfResNotOk(res: Response) {

@@ -39,21 +39,12 @@ function stripProtocol(domain) {
 }
 
 function getDeploymentDomain() {
-  // Check Replit deployment environment variables first
-  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
-  }
-
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
+  if (process.env.APP_DOMAIN) {
+    return stripProtocol(process.env.APP_DOMAIN);
   }
 
   console.error(
-    "ERROR: No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN",
+    "ERROR: No deployment domain found. Set APP_DOMAIN environment variable.",
   );
   process.exit(1);
 }
@@ -113,10 +104,10 @@ async function startMetro(expoPublicDomain) {
   }
 
   console.log("Starting Metro...");
-  console.log(`Setting EXPO_PUBLIC_DOMAIN=${expoPublicDomain}`);
+  console.log(`Setting EXPO_PUBLIC_API_URL=https://${expoPublicDomain}`);
   const env = {
     ...process.env,
-    EXPO_PUBLIC_DOMAIN: expoPublicDomain,
+    EXPO_PUBLIC_API_URL: `https://${expoPublicDomain}`,
   };
   metroProcess = spawn("npm", ["run", "expo:start:static:build"], {
     stdio: ["ignore", "pipe", "pipe"],

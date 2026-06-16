@@ -31,12 +31,18 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.local
 .env*.local
 
 # typescript
 *.tsbuildinfo
 
 app-example
+
+# build output
+server_dist/
+static-build/
 
 # generated native folders
 /ios
