@@ -250,9 +250,10 @@ export default function CashbookScreen() {
   const generateCSV = useCallback(() => {
     if (!data?.transactions || data.transactions.length === 0) return "";
 
-    // 現金・PayPay を問わず、すべての入金・出金を1つのCSVに出力する
+    // 現金・PayPay を問わず、すべての入金・出金を1つのCSVに出力する。
+    // 残高は現金とPayPayを別々の列で表示する
     const header =
-      "日付,勘定科目,取引先,内容,支払方法,入金,出金,残高\n";
+      "日付,勘定科目,取引先,内容,支払方法,入金,出金,現金残高,PayPay残高\n";
     const rows = data.transactions.map((tx) => {
       const date = tx.date;
       const accountCategory = (tx.accountCategory || "").replace(/,/g, "，");
@@ -267,15 +268,13 @@ export default function CashbookScreen() {
             : "現金";
       const income = tx.type === "income" ? tx.amount : "";
       const expense = tx.type === "expense" ? tx.amount : "";
-      return `${date},${accountCategory},${client},${description},${method},${income},${expense},${tx.balance}`;
+      return `${date},${accountCategory},${client},${description},${method},${income},${expense},${tx.cashBalance},${tx.paypayBalance}`;
     }).join("\n");
 
     const summary =
-      `\n\n合計,,,入金合計,,${data.totalIncome},,` +
-      `\n,,,出金合計,,,${data.totalExpense},` +
-      `\n,,,現金残高,,,,${data.cashBalance}` +
-      `\n,,,PayPay残高,,,,${data.paypayBalance}` +
-      `\n,,,合計残高,,,,${data.balance}`;
+      `\n\n合計,,,入金合計,,${data.totalIncome},,,` +
+      `\n,,,出金合計,,,${data.totalExpense},,` +
+      `\n,,,残高,,,,${data.cashBalance},${data.paypayBalance}`;
 
     return header + rows + summary;
   }, [data]);
