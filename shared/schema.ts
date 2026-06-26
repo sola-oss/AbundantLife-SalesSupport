@@ -40,6 +40,10 @@ export const EXPENSE_ACCOUNT_CATEGORIES = [
   "福利厚生費",
   "旅費交通費",
   "交際費",
+  "接待交際費",
+  "消耗品費",
+  "水道光熱費",
+  "修繕費",
   "租税公課",
 ] as const;
 
@@ -47,6 +51,7 @@ export const EXPENSE_ACCOUNT_CATEGORIES = [
 export const PAYMENT_METHODS = [
   "現金",
   "PayPay",
+  "クレジットカード",
 ] as const;
 
 // Zodスキーマ
@@ -92,6 +97,7 @@ export interface CashbookTransaction {
   balance: number;
   cashBalance: number;
   paypayBalance: number;
+  creditBalance: number;
   source: 'manual' | 'sales';
   manualId?: number;
   saleId?: number;
@@ -106,8 +112,10 @@ export interface CashbookSummary {
   balance: number;
   cashBalance: number;
   paypayBalance: number;
+  creditBalance: number;
   cashExpense: number;
   paypayExpense: number;
+  creditExpense: number;
 }
 
 // コース名の選択肢

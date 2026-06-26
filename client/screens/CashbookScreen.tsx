@@ -253,28 +253,23 @@ export default function CashbookScreen() {
     // 現金・PayPay を問わず、すべての入金・出金を1つのCSVに出力する。
     // 残高は現金とPayPayを別々の列で表示する
     const header =
-      "日付,勘定科目,取引先,内容,支払方法,入金,出金,現金残高,PayPay残高\n";
+      "日付,勘定科目,取引先,内容,支払方法,入金,出金,現金残高,PayPay残高,クレジットカード残高\n";
     const rows = data.transactions.map((tx) => {
       const date = tx.date;
       const accountCategory = (tx.accountCategory || "").replace(/,/g, "，");
       const client = (tx.client || "").replace(/,/g, "，");
       const description = tx.description.replace(/,/g, "，");
-      // 入金はすべて現金扱い。出金は PayPay 指定がなければ現金
-      const method =
-        tx.type === "income"
-          ? "現金"
-          : tx.paymentMethod === "PayPay"
-            ? "PayPay"
-            : "現金";
+      // 入金はすべて現金扱い。出金は指定の決済方法（未指定なら現金）
+      const method = tx.type === "income" ? "現金" : tx.paymentMethod || "現金";
       const income = tx.type === "income" ? tx.amount : "";
       const expense = tx.type === "expense" ? tx.amount : "";
-      return `${date},${accountCategory},${client},${description},${method},${income},${expense},${tx.cashBalance},${tx.paypayBalance}`;
+      return `${date},${accountCategory},${client},${description},${method},${income},${expense},${tx.cashBalance},${tx.paypayBalance},${tx.creditBalance}`;
     }).join("\n");
 
     const summary =
-      `\n\n合計,,,入金合計,,${data.totalIncome},,,` +
-      `\n,,,出金合計,,,${data.totalExpense},,` +
-      `\n,,,残高,,,,${data.cashBalance},${data.paypayBalance}`;
+      `\n\n合計,,,入金合計,,${data.totalIncome},,,,` +
+      `\n,,,出金合計,,,${data.totalExpense},,,` +
+      `\n,,,残高,,,,${data.cashBalance},${data.paypayBalance},${data.creditBalance}`;
 
     return header + rows + summary;
   }, [data]);
@@ -542,7 +537,9 @@ export default function CashbookScreen() {
           <ThemedText style={[styles.transactionBalance, { color: theme.textSecondary }]}>
             {item.type === 'expense' && item.paymentMethod === 'PayPay'
               ? `PayPay: ¥${formatAmount(item.paypayBalance)}`
-              : `現金: ¥${formatAmount(item.cashBalance)}`}
+              : item.type === 'expense' && item.paymentMethod === 'クレジットカード'
+                ? `カード: ¥${formatAmount(item.creditBalance)}`
+                : `現金: ¥${formatAmount(item.cashBalance)}`}
           </ThemedText>
           {isManual ? (
             <View style={styles.actionRow}>
@@ -649,6 +646,13 @@ export default function CashbookScreen() {
             <ThemedText style={styles.balanceLabel}>PayPay残高</ThemedText>
             <ThemedText style={styles.balanceAmount}>
               ¥{formatAmount(data?.paypayBalance || 0)}
+            </ThemedText>
+          </View>
+          <View style={{ width: Spacing.sm }} />
+          <View style={[styles.balanceCard, { backgroundColor: theme.backgroundSecondary, flex: 1 }]}>
+            <ThemedText style={styles.balanceLabel}>カード残高</ThemedText>
+            <ThemedText style={styles.balanceAmount}>
+              ¥{formatAmount(data?.creditBalance || 0)}
             </ThemedText>
           </View>
         </View>

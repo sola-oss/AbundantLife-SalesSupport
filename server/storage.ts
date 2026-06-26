@@ -175,6 +175,7 @@ export class DatabaseStorage implements IStorage {
         balance: 0,
         cashBalance: 0,
         paypayBalance: 0,
+        creditBalance: 0,
         source: 'sales',
         saleId: sale.id,
         createdAt: sale.createdAt.toISOString(),
@@ -195,6 +196,7 @@ export class DatabaseStorage implements IStorage {
         balance: 0,
         cashBalance: 0,
         paypayBalance: 0,
+        creditBalance: 0,
         source: 'manual',
         manualId: entry.id,
         createdAt: entry.createdAt.toISOString(),
@@ -213,10 +215,12 @@ export class DatabaseStorage implements IStorage {
     let balance = CASH_INITIAL_BALANCE;
     let cashBalance = CASH_INITIAL_BALANCE;
     let paypayBalance = 0;
+    let creditBalance = 0;
     let totalIncome = 0;
     let totalExpense = 0;
     let cashExpense = 0;
     let paypayExpense = 0;
+    let creditExpense = 0;
 
     for (const tx of transactions) {
       if (tx.type === 'income') {
@@ -227,6 +231,10 @@ export class DatabaseStorage implements IStorage {
         if (tx.paymentMethod === 'PayPay') {
           paypayBalance -= tx.amount;
           paypayExpense += tx.amount;
+        } else if (tx.paymentMethod === 'クレジットカード') {
+          // クレジットカードは後払い。現金は減らさず未払金として別管理
+          creditBalance -= tx.amount;
+          creditExpense += tx.amount;
         } else {
           cashBalance -= tx.amount;
           cashExpense += tx.amount;
@@ -237,6 +245,7 @@ export class DatabaseStorage implements IStorage {
       tx.balance = balance;
       tx.cashBalance = cashBalance;
       tx.paypayBalance = paypayBalance;
+      tx.creditBalance = creditBalance;
     }
 
     return {
@@ -246,8 +255,10 @@ export class DatabaseStorage implements IStorage {
       balance,
       cashBalance,
       paypayBalance,
+      creditBalance,
       cashExpense,
       paypayExpense,
+      creditExpense,
     };
   }
 }
