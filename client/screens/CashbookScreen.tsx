@@ -327,71 +327,71 @@ export default function CashbookScreen() {
     }
   }, [generateCSV, downloadCSVWeb, selectedYear, selectedMonth]);
 
-  const generatePrintHTML = useCallback((method: "現金" | "PayPay") => {
+  const generatePrintHTML = useCallback(() => {
     if (!data?.transactions || data.transactions.length === 0) return "";
 
-    const isCash = method === "現金";
-    const filtered = data.transactions.filter((tx) => {
-      if (tx.type === "income") return isCash;
-      return isCash ? tx.paymentMethod !== "PayPay" : tx.paymentMethod === "PayPay";
-    });
-    if (filtered.length === 0) return "";
-
-    const tableRows = filtered.map((tx) => {
+    // 現金・PayPay・クレジットカードを問わず、全取引を1つの帳票に出力する
+    const tableRows = data.transactions.map((tx) => {
       const isIncome = tx.type === "income";
-      const balance = isCash ? tx.cashBalance : tx.paypayBalance;
+      const method = isIncome ? "現金" : tx.paymentMethod || "現金";
       return `
         <tr>
           <td>${tx.date}</td>
           <td>${tx.accountCategory || ""}</td>
           <td>${tx.client || ""}</td>
           <td>${tx.description}</td>
+          <td>${method}</td>
           <td style="color: #4CAF50; text-align: right;">${isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
           <td style="color: #E53935; text-align: right;">${!isIncome ? `¥${formatAmount(tx.amount)}` : ""}</td>
-          <td style="text-align: right;">¥${formatAmount(balance)}</td>
+          <td style="text-align: right;">¥${formatAmount(tx.cashBalance)}</td>
+          <td style="text-align: right;">¥${formatAmount(tx.paypayBalance)}</td>
+          <td style="text-align: right;">¥${formatAmount(tx.creditBalance)}</td>
         </tr>
       `;
     }).join("");
-
-    const totalIncome = isCash ? data.totalIncome : 0;
-    const totalExpense = isCash ? data.cashExpense : data.paypayExpense;
-    const finalBalance = isCash ? data.cashBalance : data.paypayBalance;
-    const title = isCash ? "現金出納帳" : "PayPay出納帳";
 
     return `
       <!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8">
-          <title>${title} ${selectedYear}年${selectedMonth}月</title>
+          <title>現金出納帳 ${selectedYear}年${selectedMonth}月</title>
           <style>
             body { font-family: sans-serif; padding: 20px; }
             h1 { text-align: center; font-size: 24px; margin-bottom: 20px; }
-            .summary { display: flex; justify-content: space-around; margin-bottom: 20px; }
+            .summary { display: flex; flex-wrap: wrap; justify-content: space-around; margin-bottom: 20px; gap: 8px; }
             .summary-item { text-align: center; }
             .summary-label { font-size: 14px; color: #666; }
-            .summary-value { font-size: 20px; font-weight: bold; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #ddd; padding: 8px; }
+            .summary-value { font-size: 18px; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #ddd; padding: 6px; }
             th { background-color: #f5f5f5; }
             .income { color: #4CAF50; }
             .expense { color: #E53935; }
           </style>
         </head>
         <body>
-          <h1>${title} ${selectedYear}年${selectedMonth}月</h1>
+          <h1>現金出納帳 ${selectedYear}年${selectedMonth}月</h1>
           <div class="summary">
             <div class="summary-item">
               <div class="summary-label">入金合計</div>
-              <div class="summary-value income">¥${formatAmount(totalIncome)}</div>
+              <div class="summary-value income">¥${formatAmount(data.totalIncome)}</div>
             </div>
             <div class="summary-item">
               <div class="summary-label">出金合計</div>
-              <div class="summary-value expense">¥${formatAmount(totalExpense)}</div>
+              <div class="summary-value expense">¥${formatAmount(data.totalExpense)}</div>
             </div>
             <div class="summary-item">
-              <div class="summary-label">残高</div>
-              <div class="summary-value">¥${formatAmount(finalBalance)}</div>
+              <div class="summary-label">現金残高</div>
+              <div class="summary-value">¥${formatAmount(data.cashBalance)}</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-label">PayPay残高</div>
+              <div class="summary-value">¥${formatAmount(data.paypayBalance)}</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-label">カード残高</div>
+              <div class="summary-value">¥${formatAmount(data.creditBalance)}</div>
             </div>
           </div>
           <table>
@@ -401,9 +401,12 @@ export default function CashbookScreen() {
                 <th>勘定科目</th>
                 <th>取引先</th>
                 <th>内容</th>
+                <th>支払方法</th>
                 <th>入金</th>
                 <th>出金</th>
-                <th>残高</th>
+                <th>現金残高</th>
+                <th>PayPay残高</th>
+                <th>カード残高</th>
               </tr>
             </thead>
             <tbody>
@@ -416,7 +419,9 @@ export default function CashbookScreen() {
   }, [data, selectedYear, selectedMonth]);
 
   const handlePrint = useCallback(async () => {
-    if (!data?.transactions || data.transactions.length === 0) {
+    const html = generatePrintHTML();
+
+    if (!html) {
       if (Platform.OS === "web") {
         window.alert("印刷するデータがありません");
       } else {
@@ -424,75 +429,22 @@ export default function CashbookScreen() {
       }
       return;
     }
-
-    const cashHTML = generatePrintHTML("現金");
-    const paypayHTML = generatePrintHTML("PayPay");
-
-    if (!cashHTML && !paypayHTML) {
-      if (Platform.OS === "web") {
-        window.alert("印刷するデータがありません");
-      } else {
-        Alert.alert("注意", "印刷するデータがありません");
-      }
-      return;
-    }
-
-    const combinedHTML = [cashHTML, paypayHTML].filter(Boolean).join('<div style="page-break-before: always;"></div>');
-    const wrappedHTML = combinedHTML.replace(/<\/html>\s*<!DOCTYPE html>\s*<html>\s*<head>[\s\S]*?<\/head>\s*<body>/g, '<div style="page-break-before: always;">') .replace(/<\/body>\s*<\/html>\s*<div style="page-break-before: always;">/g, '<div style="page-break-before: always;">');
 
     if (Platform.OS === "web") {
       const printWindow = window.open("", "_blank");
       if (printWindow) {
-        if (cashHTML) {
-          printWindow.document.write(cashHTML);
-        }
-        if (paypayHTML) {
-          if (cashHTML) {
-            printWindow.document.write('<div style="page-break-before: always;"></div>');
-            const bodyContent = paypayHTML.match(/<body>([\s\S]*)<\/body>/);
-            if (bodyContent) {
-              printWindow.document.write(bodyContent[1]);
-            }
-          } else {
-            printWindow.document.write(paypayHTML);
-          }
-        }
+        printWindow.document.write(html);
         printWindow.document.close();
         printWindow.print();
       }
     } else {
       try {
-        const fullHTML = `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <style>
-                body { font-family: sans-serif; padding: 20px; }
-                h1 { text-align: center; font-size: 24px; margin-bottom: 20px; }
-                .summary { display: flex; justify-content: space-around; margin-bottom: 20px; }
-                .summary-item { text-align: center; }
-                .summary-label { font-size: 14px; color: #666; }
-                .summary-value { font-size: 20px; font-weight: bold; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { border: 1px solid #ddd; padding: 8px; }
-                th { background-color: #f5f5f5; }
-                .income { color: #4CAF50; }
-                .expense { color: #E53935; }
-              </style>
-            </head>
-            <body>
-              ${cashHTML ? cashHTML.match(/<body>([\s\S]*)<\/body>/)?.[1] || "" : ""}
-              ${paypayHTML ? '<div style="page-break-before: always;"></div>' + (paypayHTML.match(/<body>([\s\S]*)<\/body>/)?.[1] || "") : ""}
-            </body>
-          </html>
-        `;
-        await Print.printAsync({ html: fullHTML });
+        await Print.printAsync({ html });
       } catch (error) {
         Alert.alert("エラー", "印刷に失敗しました");
       }
     }
-  }, [data, generatePrintHTML]);
+  }, [generatePrintHTML]);
 
   const renderTransaction = ({ item }: { item: CashbookTransaction }) => {
     const isIncome = item.type === "income";
