@@ -247,32 +247,35 @@ export default function CashbookScreen() {
     setShowAddModal(true);
   };
 
-  const generateCSVForMethod = useCallback((method: "現金" | "PayPay") => {
+  const generateCSV = useCallback(() => {
     if (!data?.transactions || data.transactions.length === 0) return "";
 
-    const isCash = method === "現金";
-    const filtered = data.transactions.filter((tx) => {
-      if (tx.type === "income") return isCash;
-      return isCash ? tx.paymentMethod !== "PayPay" : tx.paymentMethod === "PayPay";
-    });
-    if (filtered.length === 0) return "";
-
-    const header = "日付,勘定科目,取引先,内容,入金,出金,残高\n";
-    const rows = filtered.map((tx) => {
+    // 現金・PayPay を問わず、すべての入金・出金を1つのCSVに出力する
+    const header =
+      "日付,勘定科目,取引先,内容,支払方法,入金,出金,残高\n";
+    const rows = data.transactions.map((tx) => {
       const date = tx.date;
       const accountCategory = (tx.accountCategory || "").replace(/,/g, "，");
       const client = (tx.client || "").replace(/,/g, "，");
       const description = tx.description.replace(/,/g, "，");
+      // 入金はすべて現金扱い。出金は PayPay 指定がなければ現金
+      const method =
+        tx.type === "income"
+          ? "現金"
+          : tx.paymentMethod === "PayPay"
+            ? "PayPay"
+            : "現金";
       const income = tx.type === "income" ? tx.amount : "";
       const expense = tx.type === "expense" ? tx.amount : "";
-      const balance = isCash ? tx.cashBalance : tx.paypayBalance;
-      return `${date},${accountCategory},${client},${description},${income},${expense},${balance}`;
+      return `${date},${accountCategory},${client},${description},${method},${income},${expense},${tx.balance}`;
     }).join("\n");
 
-    const totalIncome = isCash ? data.totalIncome : 0;
-    const totalExpense = isCash ? data.cashExpense : data.paypayExpense;
-    const finalBalance = isCash ? data.cashBalance : data.paypayBalance;
-    const summary = `\n\n合計,,入金合計,${totalIncome},,\n,,出金合計,,${totalExpense},\n,,残高,,,${finalBalance}`;
+    const summary =
+      `\n\n合計,,,入金合計,,${data.totalIncome},,` +
+      `\n,,,出金合計,,,${data.totalExpense},` +
+      `\n,,,現金残高,,,,${data.cashBalance}` +
+      `\n,,,PayPay残高,,,,${data.paypayBalance}` +
+      `\n,,,合計残高,,,,${data.balance}`;
 
     return header + rows + summary;
   }, [data]);
@@ -291,10 +294,9 @@ export default function CashbookScreen() {
   }, []);
 
   const handleExportCSV = useCallback(async () => {
-    const cashCSV = generateCSVForMethod("現金");
-    const paypayCSV = generateCSVForMethod("PayPay");
+    const csv = generateCSV();
 
-    if (!cashCSV && !paypayCSV) {
+    if (!csv) {
       if (Platform.OS === "web") {
         window.alert("エクスポートするデータがありません");
       } else {
@@ -303,43 +305,25 @@ export default function CashbookScreen() {
       return;
     }
 
+    const filename = `現金出納帳_${selectedYear}年${selectedMonth}月.csv`;
+
     if (Platform.OS === "web") {
-      if (cashCSV) {
-        downloadCSVWeb(cashCSV, `現金出納帳_現金_${selectedYear}年${selectedMonth}月.csv`);
-      }
-      if (paypayCSV) {
-        setTimeout(() => {
-          downloadCSVWeb(paypayCSV, `現金出納帳_PayPay_${selectedYear}年${selectedMonth}月.csv`);
-        }, 500);
-      }
-      const methods = [cashCSV ? "現金" : "", paypayCSV ? "PayPay" : ""].filter(Boolean).join("・");
-      setSuccessMessage(`${methods}のCSVをダウンロードしました`);
+      downloadCSVWeb(csv, filename);
+      setSuccessMessage("CSVをダウンロードしました");
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 2000);
     } else {
       try {
-        const files: string[] = [];
-        if (cashCSV) {
-          const cashFile = new File(Paths.cache, `現金出納帳_現金_${selectedYear}年${selectedMonth}月.csv`);
-          await cashFile.create();
-          await cashFile.write(cashCSV);
-          files.push(cashFile.uri);
-        }
-        if (paypayCSV) {
-          const paypayFile = new File(Paths.cache, `現金出納帳_PayPay_${selectedYear}年${selectedMonth}月.csv`);
-          await paypayFile.create();
-          await paypayFile.write(paypayCSV);
-          files.push(paypayFile.uri);
-        }
+        const file = new File(Paths.cache, filename);
+        await file.create();
+        await file.write(csv);
 
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
-          for (const uri of files) {
-            await Sharing.shareAsync(uri, {
-              mimeType: "text/csv",
-              dialogTitle: "出納帳をエクスポート",
-            });
-          }
+          await Sharing.shareAsync(file.uri, {
+            mimeType: "text/csv",
+            dialogTitle: "出納帳をエクスポート",
+          });
         } else {
           Alert.alert("完了", `ファイルを保存しました`);
         }
@@ -347,7 +331,7 @@ export default function CashbookScreen() {
         Alert.alert("エラー", "エクスポートに失敗しました");
       }
     }
-  }, [generateCSVForMethod, downloadCSVWeb, selectedYear, selectedMonth]);
+  }, [generateCSV, downloadCSVWeb, selectedYear, selectedMonth]);
 
   const generatePrintHTML = useCallback((method: "現金" | "PayPay") => {
     if (!data?.transactions || data.transactions.length === 0) return "";
