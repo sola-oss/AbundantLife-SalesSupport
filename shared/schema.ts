@@ -39,7 +39,6 @@ export const EXPENSE_ACCOUNT_CATEGORIES = [
   "雑費",
   "福利厚生費",
   "旅費交通費",
-  "交際費",
   "接待交際費",
   "消耗品費",
   "水道光熱費",
