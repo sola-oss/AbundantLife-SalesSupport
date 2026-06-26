@@ -10,7 +10,7 @@ import {
   type CashbookSummary
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
+import { eq, desc, and, gte, lte, lt, sql, asc } from "drizzle-orm";
 
 // 売上データのストレージインターフェース
 export interface IStorage {
@@ -159,6 +159,45 @@ export class DatabaseStorage implements IStorage {
       .where(and(gte(sales.date, startDate), lte(sales.date, endDate)))
       .orderBy(asc(sales.date), asc(sales.createdAt));
 
+    // 開始残高（2025年10月末時点 = 2025年11月開始残高）
+    const OPENING_CASH_BALANCE = 137751;
+    const OPENING_DATE = "2025-11-01";
+
+    // 当月より前（かつ開始日以降）の取引から、前月繰越の残高を計算する
+    let openingCash = OPENING_CASH_BALANCE;
+    let openingPaypay = 0;
+    let openingCredit = 0;
+
+    if (startDate >= OPENING_DATE) {
+      const priorSales = await db
+        .select()
+        .from(sales)
+        .where(and(gte(sales.date, OPENING_DATE), lt(sales.date, startDate)));
+      const priorManual = await db
+        .select()
+        .from(cashbook)
+        .where(and(gte(cashbook.date, OPENING_DATE), lt(cashbook.date, startDate)));
+
+      // 売上はすべて現金入金
+      for (const s of priorSales) {
+        openingCash += s.amount;
+      }
+      for (const e of priorManual) {
+        if (e.type === "income") {
+          openingCash += e.amount;
+        } else if (e.paymentMethod === "PayPay") {
+          openingPaypay -= e.amount;
+        } else if (e.paymentMethod === "クレジットカード") {
+          openingCredit -= e.amount;
+        } else {
+          openingCash -= e.amount;
+        }
+      }
+    } else {
+      // 開始日より前の月は繰越なし
+      openingCash = 0;
+    }
+
     // 統合してトランザクションリストを作成
     const transactions: CashbookTransaction[] = [];
     let idCounter = 1;
@@ -210,12 +249,11 @@ export class DatabaseStorage implements IStorage {
       return a.createdAt.localeCompare(b.createdAt);
     });
 
-    // 決済方法別残高を計算（現金初期残高: 137,751円）
-    const CASH_INITIAL_BALANCE = 137751;
-    let balance = CASH_INITIAL_BALANCE;
-    let cashBalance = CASH_INITIAL_BALANCE;
-    let paypayBalance = 0;
-    let creditBalance = 0;
+    // 決済方法別残高を計算（前月繰越を反映した開始残高からスタート）
+    let balance = openingCash + openingPaypay + openingCredit;
+    let cashBalance = openingCash;
+    let paypayBalance = openingPaypay;
+    let creditBalance = openingCredit;
     let totalIncome = 0;
     let totalExpense = 0;
     let cashExpense = 0;
